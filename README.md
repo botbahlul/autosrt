@@ -13,6 +13,7 @@ positional arguments:
   source_path           Path to the video or audio file to subtitle
 
 options:
+
   -h, --help            show this help message and exit
   
   -C CONCURRENCY, --concurrency CONCURRENCY
