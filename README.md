@@ -1,3 +1,5 @@
+<meta name="google-site-verification" content="ePBxCkmSnoICfbBUeLO2SEhUNUVaJvIjC6q5ipARcVQ" />
+
 # autosrt
 auto generate srt subtitles for any video or audio file and translate it for free using googletrans-4.0.0-rc1
 
@@ -88,4 +90,3 @@ PLEASE USE IT WISELY!
 
 DON'T ABUSE GOOGLE TRANSLATE SERVERS WITH HUGE REQUESTS AND MAKES ALL OF US GET 503 Service Unavailable ERROR!
 
-<meta name="google-site-verification" content="ePBxCkmSnoICfbBUeLO2SEhUNUVaJvIjC6q5ipARcVQ" />
