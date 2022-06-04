@@ -9,9 +9,9 @@ you can compile it into a single executable file with pyinstaller with command :
 ```
   pyinstaller --onefile __init__.py
 ```
-then you can just put it in a folder that has been added to your PATH ENVIRONTMENT
+then you can just put it into a folder that has been added to your PATH ENVIRONTMENT
 
-or you can just install it with python by download this git as zip then extract it to a folder then just type :
+or you can just install it with python by download this git as zip then extract it into a folder and then just type :
 
 ```
   python setup.py build
@@ -25,7 +25,7 @@ from any folder by adding its location folder into PATH ENVIRONTMENT
 
 you can get ffmpeg from https://www.ffmpeg.org/
 
-Simple usage example for original script using python (python>=3.6):
+Simple usage example :
   
 in linux :
 ```
