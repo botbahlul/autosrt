@@ -8,7 +8,7 @@ usage:
 
 autosrt [-h] [-C CONCURRENCY] [-o OUTPUT] [-F FORMAT] [-S SRC_LANGUAGE] [-D DST_LANGUAGE]
 
-   [-n RENAME] [-p PATIENCE] [-v] [--list-formats] [--list-languages] [source_path]
+        [-n RENAME] [-p PATIENCE] [-v] [--list-formats] [--list-languages] [source_path]
 
 
 positional arguments:
