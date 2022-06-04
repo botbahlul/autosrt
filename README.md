@@ -52,7 +52,7 @@ Simple usage example :
   
   in linux :
 
-  $ python3 autosrt.py -S zh-CN -D en filename.mp4
+  $ python3.8 autosrt.py -S zh-CN -D en filename.mp4
   
   
   in Windows :
