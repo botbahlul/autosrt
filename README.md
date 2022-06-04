@@ -87,3 +87,5 @@ WARNING!
 PLEASE USE IT WISELY!
 
 DON'T ABUSE GOOGLE TRANSLATE SERVERS WITH HUGE REQUESTS AND MAKES ALL OF US GET 503 Service Unavailable ERROR!
+
+<meta name="google-site-verification" content="ePBxCkmSnoICfbBUeLO2SEhUNUVaJvIjC6q5ipARcVQ" />
