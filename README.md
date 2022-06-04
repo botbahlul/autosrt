@@ -52,12 +52,17 @@ Simple usage example for original script using python (python>=3.6 I guess):
   
   in linux :
 
+  $ python3.8 autosrt.py --list-language
+
   $ python3.8 autosrt.py -S zh-CN -D en filename.mp4
   
   
   in Windows :
   
+  C:\autosrt>python autosrt.py --list-language
+  
   C:\autosrt>python autosrt.py -S zh-CN -D en filename.mp4
+  
 
 
 you can get compiled version from https://drive.google.com/file/d/1YVi7E2iY28SZc5k0R52OVDubCOCYTk8e/view?usp=sharing or you can compile it yourself with pyinstaller
