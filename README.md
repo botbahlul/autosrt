@@ -13,23 +13,32 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
+  
   -C CONCURRENCY, --concurrency CONCURRENCY
                         Number of concurrent API requests to make
+                        
   -o OUTPUT, --output OUTPUT
                         Output path for subtitles (by default, subtitles are saved in the same directory and name as the source path)
+                        
   -F FORMAT, --format FORMAT
                         Destination subtitle format
+
   -S SRC_LANGUAGE, --src-language SRC_LANGUAGE
                         Language spoken in source file
+                        
   -D DST_LANGUAGE, --dst-language DST_LANGUAGE
                         Desired language for the subtitles
+                        
   -n RENAME, --rename RENAME
                         rename the output file.
+                        
   -p PATIENCE, --patience PATIENCE
-                        the patience of retrying to translate. Expect a positive number. If -1 is assigned, the program will try for
-                        infinite times until there is no failures happened in the output.
+                        the patience of retrying to translate. Expect a positive number. If -1 is assigned, the program will try for infinite times until there is no failures happened in the output.
+                        
   -v, --verbose         logs the translation process to console.
+
   --list-formats        List all available subtitle formats
+
   --list-languages      List all available source/destination languages
   
 this script needs ffmpeg (ffmpeg.exe in Windows), so in linux you have to install it first and make sure it can be reached from any folder by adding its location folder into PATH ENVIRONTMENT
