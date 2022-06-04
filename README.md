@@ -8,7 +8,7 @@ you can compile it into a single executable file with pyinstaller with command :
 
   pyinstaller --onefile __init__.py
 
-or you can just install it with python by download this git as zip then extract it to a folder then just type :
+or you can just install it with python by download this git as zip then extract it to a folder and then just type :
 
   python setup.py build
 
