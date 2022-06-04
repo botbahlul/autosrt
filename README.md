@@ -79,3 +79,9 @@ to use it simply type :
 
 $ autosrt -S zh-CN -D en filename.mp4
 
+
+WARNING!
+
+PLEASE USE IT WISELY!
+
+DON'T ABUSE GOOGLE TRANSLATE SERVERS WITH HUGE REQUESTS AND MAKES ALL OF US GET 503 ERROR!
