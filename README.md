@@ -47,10 +47,8 @@ I was succesfuly compiled it in Windows 10 with Pyhton-3.10.4 and python-3.8.12 
 
 it still needs ffmpeg (ffmpeg.exe in Windows) so you have to install it first and make sure it can be reached from any folder by adding its location folder into PATH ENVIRONTMENT
 
-you can get that compiled version from https://drive.google.com/file/d/1YVi7E2iY28SZc5k0R52OVDubCOCYTk8e/view?usp=sharing
 
-
-Simple usage example :
+Simple usage example for original script using python (python>=3.6 I guess):
   
   in linux :
 
@@ -60,3 +58,17 @@ Simple usage example :
   in Windows :
   
   C:\autosrt>python autosrt.py -S zh-CN -D en filename.mp4
+
+
+you can get that compiled version from https://drive.google.com/file/d/1YVi7E2iY28SZc5k0R52OVDubCOCYTk8e/view?usp=sharing or you can compile it yourself with pyinstaller
+
+in Windows just extract those ffmpeg.exe and autosrt.exe to a folder that has been add to PATH ENVIRONTMET for example in C:\Windows\system32
+
+to use it simply type :
+C:\autosrt -S zh-CN -D en filename.mp4
+
+in Linux just extract that autosrt file to /usr/bin/ or /usr/local/bin/ or /usr/sbin/ or /usr/local/sbin/
+
+to use it simply type :
+$ autosrt -S zh-CN -D en filename.mp4
+
