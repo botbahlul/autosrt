@@ -47,6 +47,8 @@ I was succesfuly compiled it in Windows 10 with Pyhton-3.10.4 and python-3.8.12 
 
 it still needs ffmpeg (ffmpeg.exe in Windows) so you have to install it first and make sure it can be reached from any folder by adding its location folder into PATH ENVIRONTMENT
 
+you can get that compiled version from https://drive.google.com/file/d/1YVi7E2iY28SZc5k0R52OVDubCOCYTk8e/view?usp=sharing
+
 
 Simple usage example :
   
