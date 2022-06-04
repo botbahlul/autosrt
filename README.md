@@ -1,5 +1,5 @@
 # autosrt
-auto generate srt subtitles for any video or audio file and translate it for free using googletrans-4.0.0-rc1
+auto generate srt subtitle for any video or audio file and translate it for free using googletrans-4.0.0-rc1
 
 this script is a combined and modified version from original autosub made by Anastasis Germanidis https://github.com/agermanidis/autosub
 and translate-srt-subtitles.py made by jaredyam https://gist.github.com/jaredyam/4fe7527ccf6981595a879c9705e56c51
