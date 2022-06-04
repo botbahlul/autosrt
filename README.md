@@ -5,7 +5,10 @@ auto generate srt subtitles for any video or audio file and translate it for fre
 
 this script is a combined and modified version from original autosub made by Anastasis Germanidis https://github.com/agermanidis/autosub and translate-srt-subtitles.py made by jaredyam https://gist.github.com/jaredyam/4fe7527ccf6981595a879c9705e56c51
 
-usage: autosrt [-h] [-C CONCURRENCY] [-o OUTPUT] [-F FORMAT] [-S SRC_LANGUAGE] [-D DST_LANGUAGE] [-n RENAME] [-p PATIENCE] [-v]
+
+usage:
+
+autosrt [-h] [-C CONCURRENCY] [-o OUTPUT] [-F FORMAT] [-S SRC_LANGUAGE] [-D DST_LANGUAGE] [-n RENAME] [-p PATIENCE] [-v]
                [--list-formats] [--list-languages]
                [source_path]
 
