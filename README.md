@@ -80,6 +80,8 @@ to use it simply type :
 $ autosrt -S zh-CN -D en filename.mp4
 
 
+
+
 WARNING!
 
 PLEASE USE IT WISELY!
