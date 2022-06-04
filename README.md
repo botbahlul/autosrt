@@ -65,10 +65,12 @@ you can get that compiled version from https://drive.google.com/file/d/1YVi7E2iY
 in Windows just extract those ffmpeg.exe and autosrt.exe to a folder that has been add to PATH ENVIRONTMET for example in C:\Windows\system32
 
 to use it simply type :
+
 C:\autosrt -S zh-CN -D en filename.mp4
 
 in Linux just extract that autosrt file to /usr/bin/ or /usr/local/bin/ or /usr/sbin/ or /usr/local/sbin/
 
 to use it simply type :
+
 $ autosrt -S zh-CN -D en filename.mp4
 
