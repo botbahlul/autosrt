@@ -4,7 +4,10 @@ auto generate srt subtitles for any video or audio file and translate it for fre
 this script is a combined and modified version from original autosub made by Anastasis Germanidis https://github.com/agermanidis/autosub
 and translate-srt-subtitles.py made by jaredyam https://gist.github.com/jaredyam/4fe7527ccf6981595a879c9705e56c51
 
-you can compile it into a single executable file with pyinstaller with command : pyinstaller --onefile __init__.py
+you can compile it into a single executable file with pyinstaller with command :
+
+  pyinstaller --onefile __init__.py
+
 or you can just install it with python by download this git as zip then extract it to a folder then just type :
 
   python setup.py build
