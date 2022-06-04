@@ -43,6 +43,8 @@ options:
 
 this script can be compiled into a single executable file with pyinstaller with command : pyinstaller --onefile autosrt.py
 
+I was succesfuly compiled it in Windows 10 with Pyhton-3.10.4 and python-3.8.12 in Debian 9
+
 it still needs ffmpeg (ffmpeg.exe in Windows) so you have to install it first and make sure it can be reached from any folder by adding its location folder into PATH ENVIRONTMENT
 
 
@@ -55,4 +57,4 @@ Simple usage example :
   
   in Windows :
   
-  C:\autosrt>autosrt -S zh-CN -D en filename.mp4
+  C:\autosrt>python autosrt.py -S zh-CN -D en filename.mp4
