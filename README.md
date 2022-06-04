@@ -60,7 +60,7 @@ Simple usage example for original script using python (python>=3.6 I guess):
   C:\autosrt>python autosrt.py -S zh-CN -D en filename.mp4
 
 
-you can get that compiled version from https://drive.google.com/file/d/1YVi7E2iY28SZc5k0R52OVDubCOCYTk8e/view?usp=sharing or you can compile it yourself with pyinstaller
+you can get compiled version from https://drive.google.com/file/d/1YVi7E2iY28SZc5k0R52OVDubCOCYTk8e/view?usp=sharing or you can compile it yourself with pyinstaller
 
 in Windows just extract those ffmpeg.exe and autosrt.exe to a folder that has been added to PATH ENVIRONTMET for example in C:\Windows\system32
 
