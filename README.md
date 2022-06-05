@@ -11,7 +11,7 @@ you can compile it into a single executable file with pyinstaller with command :
 pip install pyinstaller
 pyinstaller --onefile __init__.py
 ```
-then you can just rename and put it into a folder that has been added to your PATH ENVIRONTMENT
+then you can just rename that __init__.exe to autosrt.exe and put it into a folder that has been added to your PATH ENVIRONTMENT
 
 or you can just install it with python by cloning this git with git clone or download this git as zip and then extract it into a folder and then just type :
 
