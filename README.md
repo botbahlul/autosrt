@@ -7,24 +7,25 @@ and translate-srt-subtitles.py made by jaredyam at https://gist.github.com/jared
 
 ### Installation
 
-if you don't have python on your system you can get compiled version from
-https://drive.google.com/file/d/1rx05iz6-5OEfAi6AP1SVT7aOv6sP7CHx/view?usp=sharing
+if you don't have python on your Windows system you can get compiled version from
+https://drive.google.com/file/d/1eVV14Hz4FtQUTRF_qVQhi2E_MPzSkHUL/view?usp=sharing
 
-in Windows just extract those ffmpeg.exe and autosrt.exe (from this rar WINDOWS folder) into a folder that has been added to PATH ENVIRONTMET
+just extract those ffmpeg.exe and autosrt.exe into a folder that has been added to PATH ENVIRONTMET
 for example in C:\Windows\system32
 
-you can get original ffmpeg from https://www.ffmpeg.org/
+you can get latest version of ffmpeg from https://www.ffmpeg.org/
 
-make sure ffmpeg.exe can be reached from any folder by adding its location folder into PATH ENVIRONTMENT
-
-in Linux you're still need ffmpeg, so install it first then extract autosrt file (from this rar LINUX folder) into 
-/usr/bin/ or /usr/local/bin/ or /usr/sbin/ or /usr/local/sbin/
-
-
-if python has already installed on your system you can install this script with pip
+in Linux you have to install this script with python>=3.8 and install ffmpeg with pip or with your linux package manager
+for example in debian based linux distribution you can type
 
 ```
-pip install ffmpeg
+apt update
+apt install -y ffmpeg
+```
+
+to install this autosrt, just type
+
+```
 pip install autosrt
 ```
 
