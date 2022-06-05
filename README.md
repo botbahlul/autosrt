@@ -93,7 +93,7 @@ options:
                         
   -p PATIENCE, --patience PATIENCE
                         the patience of retrying to translate.
-                        Expect a positive  number.  If -1 is 
+                        Expect  a positive  number.  If -1 is 
                         assigned,  the program will  try  for 
                         infinite  times  until  there  is  no 
                         failures happened in the output.
