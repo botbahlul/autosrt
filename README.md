@@ -17,7 +17,7 @@ you can get original ffmpeg from https://www.ffmpeg.org/
 
 make sure ffmpeg.exe can be reached from any folder by adding its location folder into PATH ENVIRONTMENT
 
-in Linux you're still need ffmpeg, so install it first then extract autosrt file (from this rar linux folder) into 
+in Linux you're still need ffmpeg, so install it first then extract autosrt file (from this rar LINUX folder) into 
 /usr/bin/ or /usr/local/bin/ or /usr/sbin/ or /usr/local/sbin/
 
 
