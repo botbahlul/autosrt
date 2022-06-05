@@ -60,7 +60,7 @@ DON'T ABUSE GOOGLE TRANSLATE SERVERS WITH HUGE REQUESTS AND MAKES ALL OF US GET 
 autosrt [-h] [-C CONCURRENCY] [-o OUTPUT] [-F FORMAT] [-S SRC_LANGUAGE] [-D DST_LANGUAGE]
              [-n RENAME] [-p PATIENCE] [-v] [--list-formats] [--list-languages] [source_path]
 
-positional arguments:
+positional argument:
   source_path           Path to the video or audio file to subtitle
 
 options:
