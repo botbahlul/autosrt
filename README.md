@@ -68,8 +68,8 @@ type these commands to get python, pip, this autosrt, and any other pip packages
 ```
 termux-setup-storage
 pkg update -y
-pkg install python
-pkg install ffmpeg
+pkg install -y python
+pkg install -y ffmpeg
 pip install autosrt
 ```
 
