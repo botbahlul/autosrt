@@ -7,7 +7,8 @@ and translate-srt-subtitles.py made by jaredyam at https://gist.github.com/jared
 
 ### Installation
 
-if you don't have python on your system you can get compiled version from https://drive.google.com/file/d/1YVi7E2iY28SZc5k0R52OVDubCOCYTk8e/view?usp=sharing
+if you don't have python on your system you can get compiled version from
+https://drive.google.com/file/d/1rx05iz6-5OEfAi6AP1SVT7aOv6sP7CHx/view?usp=sharing
 
 in Windows just extract those ffmpeg.exe and autosrt.exe (in this rar windows folder) into a folder that has been added to PATH ENVIRONTMET
 for example in C:\Windows\system32
