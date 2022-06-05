@@ -27,12 +27,12 @@ pip install ffmpeg
 pip install autosrt
 ```
 
-you can compile this script into a single executable file with pyinstaller by cloning this git
-(or downloading this git as zip then extract it into a folder), goto autosrt subfolder and type :
+you can compile this script into a single executable file with pyinstaller by downloading
+'__init__.py' file, rename it to autosrt.py and type :
 
 ```
 pip install pyinstaller
-pyinstaller --onefile __init__.py
+pyinstaller --onefile autosrt.py
 ```
 
 the executable compiled file will be placed by pyinstaller into dist subfolder of your current working folder, then you can 
