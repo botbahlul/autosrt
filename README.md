@@ -92,9 +92,10 @@ options:
                         rename the output file.
                         
   -p PATIENCE, --patience PATIENCE
-                        the patience of retrying to translate. Expect 
-                        a positive number. If -1 is assigned, the program 
-                        will try for infinite times until there is no 
+                        the patience of retrying to translate.
+                        Expect a positive number. If -1 is 
+                        assigned, the program will try for 
+                        infinite times until there is no 
                         failures happened in the output.
                         
   -v, --verbose         logs the translation process to console.
