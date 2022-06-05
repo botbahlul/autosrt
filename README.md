@@ -1,5 +1,5 @@
-# autosrt <a href="https://pypi.org/project/autosrt/0.0.1/"><img src="https://img.shields.io/pypi/v/autosrt.svg"></img></a>
-  
+# autosrt <a href="https://pypi.org/project/autosrt/0.0.1/"></a>
+
 ### auto generate subtitle for any video
 
 # autosrt
