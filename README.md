@@ -11,16 +11,15 @@ and translate-srt-subtitles.py made by jaredyam at https://gist.github.com/jared
 you can compile it into a single executable file with pyinstaller with command :
 
 ```
-  pyinstaller --onefile __init__.py
+pyinstaller --onefile __init__.py
 ```
 then you can just put it into a folder that has been added to your PATH ENVIRONTMENT
 
 or you can just install it with python by download this git as zip then extract it into a folder and then just type :
 
 ```
-  python setup.py build
-
-  python setup.py install
+python setup.py build
+python setup.py install
 ```
 I was succesfuly compiled it in Windows 10 with Pyhton-3.10.4 and python-3.8.12 in Debian 9
 
@@ -33,16 +32,14 @@ Simple usage example :
   
 in linux :
 ```
-  $ autosrt --list-languages
-
-  $ autosrt -S zh-CN -D en filename.mp4
+$ autosrt --list-languages
+$ autosrt -S zh-CN -D en filename.mp4
 ```  
   
 in Windows :
 ```
-  C:\autosrt>autosrt --list-languages
-  
-  C:\autosrt>autosrt -S zh-CN -D en filename.mp4
+C:\autosrt>autosrt --list-languages
+C:\autosrt>autosrt -S zh-CN -D en filename.mp4
 ```  
 
 you can get compiled version from https://drive.google.com/file/d/1YVi7E2iY28SZc5k0R52OVDubCOCYTk8e/view?usp=sharing
