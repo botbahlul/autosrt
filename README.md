@@ -1,61 +1,62 @@
 # autosrt <a href="https://pypi.org/project/autosrt/0.0.1/"><img src="https://img.shields.io/pypi/v/autosrt.svg"></img></a>
 
-### auto generate subtitle for any video or audio file and translate it for free using googletrans-4.0.0-rc1
+### auto generate subtitle for any video
+
+# autosrt
+auto generate srt subtitle for any video or audio file and translate it for free using googletrans-4.0.0-rc1
 
 this script is a modified and combined version of original autosub made by Anastasis Germanidis at https://github.com/agermanidis/autosub
 and translate-srt-subtitles.py made by jaredyam at https://gist.github.com/jaredyam/4fe7527ccf6981595a879c9705e56c51
 
-you can compile it into a single executable file with pyinstaller with command :
+### Installation
+
+if you don't have python on your system you can get compiled version from https://drive.google.com/file/d/1YVi7E2iY28SZc5k0R52OVDubCOCYTk8e/view?usp=sharing
+
+in Windows just extract those ffmpeg.exe and autosrt.exe (in this rar windows folder) into a folder that has been added to PATH ENVIRONTMET
+for example in C:\Windows\system32
+
+you can get original ffmpeg from https://www.ffmpeg.org/
+
+make sure ffmpeg.exe can be reached from any folder by adding its location folder into PATH ENVIRONTMENT
+
+in Linux you're still need ffmpeg, so install it first then extract autosrt file (from this rar linux folder) into 
+/usr/bin/ or /usr/local/bin/ or /usr/sbin/ or /usr/local/sbin/
+
+
+if python has already installed on your system you can install this script with pip
+
+```
+pip install ffmpeg
+pip install autosrt
+```
+
+you can compile this script into a single executable file with pyinstaller by cloning this git
+(or downloading this git as zip then extract it into a folder), goto autosrt subfolder and type :
 
 ```
 pip install pyinstaller
 pyinstaller --onefile __init__.py
 ```
-the compiled file will be placed by pyinstaller into dist subfolder of your working folder
 
-then you can just rename that exeecutable file and put it into a folder that has been added to your PATH ENVIRONTMENT
+the executable compiled file will be placed by pyinstaller into dist subfolder of your current working folder, then you can 
+just rename and put that compiled file into a folder that has been added to your PATH ENVIRONTMENT so you can execute it from anywhere
 
-or you can just install it with python by cloning this git with git clone or download this git as zip and then extract it into a folder and then just type :
+I was succesfuly compiled it in Windows 10 with pyinstaller-5.1 and Pyhton-3.10.4 and python-3.8.12 in Debian 9
+
+other alternative way you can install this script with python by cloning this git (or downloading this git as zip then extract it into 
+a folder), and then just type :
 
 ```
 python setup.py build
 python setup.py install
 ```
-I was succesfuly compiled it with pyinstaller-5.1 and Pyhton-3.10.4 in Windows 10 and python-3.8.12 in Debian 9
-
-it still needs ffmpeg (ffmpeg.exe in Windows) so you have to install it first and make sure it can be reached
-from any folder by adding its location folder into PATH ENVIRONTMENT
-
-you can get ffmpeg from https://www.ffmpeg.org/
 
 Simple usage example :
   
-in linux :
 ```
-$ autosrt --list-languages
-$ autosrt -S zh-CN -D en filename.mp4
+autosrt --list-languages
+autosrt -S zh-CN -D en filename.mp4
 ```  
-  
-in Windows :
-```
-C:\autosrt>autosrt --list-languages
-C:\autosrt>autosrt -S zh-CN -D en filename.mp4
-```  
-
-you can get compiled version from https://drive.google.com/file/d/1YVi7E2iY28SZc5k0R52OVDubCOCYTk8e/view?usp=sharing
-
-in Windows just extract those ffmpeg.exe and autosrt.exe to a folder that has been added to PATH ENVIRONTMET
-for example in C:\Windows\system32
-
-in Linux just extract that autosrt file to /usr/bin/ or /usr/local/bin/ or /usr/sbin/ or /usr/local/sbin/
-
-
-### WARNING!
-
-PLEASE USE IT WISELY!
-
-DON'T ABUSE GOOGLE TRANSLATE SERVERS WITH HUGE REQUESTS AND MAKES ALL OF US GET 503 Service Unavailable ERROR!
-
 
 ### Usage
 
@@ -63,7 +64,7 @@ DON'T ABUSE GOOGLE TRANSLATE SERVERS WITH HUGE REQUESTS AND MAKES ALL OF US GET 
 autosrt [-h] [-C CONCURRENCY] [-o OUTPUT] [-F FORMAT] [-S SRC_LANGUAGE] [-D DST_LANGUAGE]
              [-n RENAME] [-p PATIENCE] [-v] [--list-formats] [--list-languages] [source_path]
 
-positional argument:
+positional arguments:
   source_path           Path to the video or audio file to subtitle
 
 options:
@@ -97,6 +98,11 @@ options:
   
   --list-languages      List all available source/destination languages
 ```
+
+### WARNING!
+
+PLEASE USE IT WISELY!
+DON'T ABUSE GOOGLE TRANSLATE SERVERS WITH HUGE REQUESTS AND MAKES ALL OF US ENDED UP IN 503 Service Unavailable ERROR!
 
 ### License
 
