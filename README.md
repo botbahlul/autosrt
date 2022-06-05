@@ -75,7 +75,8 @@ options:
                         Number of concurrent API requests to make
                         
   -o OUTPUT, --output OUTPUT
-                        Output path for subtitles (by default, subtitles are saved in the same directory and name as the source path)
+                        Output path for subtitles (by default, subtitles are saved in the same directory 
+                        and name as the source path)
                         
   -F FORMAT, --format FORMAT
                         Destination subtitle format
@@ -90,8 +91,9 @@ options:
                         rename the output file.
                         
   -p PATIENCE, --patience PATIENCE
-                        the patience of retrying to translate. Expect a positive number. If -1 is assigned,
-                        the program will try for infinite times until there is no failures happened in the output.
+                        the patience of retrying to translate. Expect a positive number. 
+                        If -1 is assigned, the program will try for infinite times until 
+                        there is no failures happened in the output.
                         
   -v, --verbose         logs the translation process to console.
   
