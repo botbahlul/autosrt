@@ -8,6 +8,7 @@ and translate-srt-subtitles.py made by jaredyam at https://gist.github.com/jared
 you can compile it into a single executable file with pyinstaller with command :
 
 ```
+pip install pyinstaller
 pyinstaller --onefile __init__.py
 ```
 then you can just rename and put it into a folder that has been added to your PATH ENVIRONTMENT
