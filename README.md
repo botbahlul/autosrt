@@ -2,7 +2,7 @@
 
 ### auto generate subtitle for any video or audio file and translate it for free using googletrans-4.0.0-rc1
 
-this script is a modified and combined version from original autosub made by Anastasis Germanidis at https://github.com/agermanidis/autosub
+this script is a modified and combined version of original autosub made by Anastasis Germanidis at https://github.com/agermanidis/autosub
 and translate-srt-subtitles.py made by jaredyam at https://gist.github.com/jaredyam/4fe7527ccf6981595a879c9705e56c51
 
 you can compile it into a single executable file with pyinstaller with command :
