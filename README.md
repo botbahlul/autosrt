@@ -12,7 +12,7 @@ pyinstaller --onefile __init__.py
 ```
 then you can just put it into a folder that has been added to your PATH ENVIRONTMENT
 
-or you can just install it with python by download this git as zip then extract it into a folder and then just type :
+or you can just install it with python by cloning this git with git clone or download this git as zip and then extract it into a folder and then just type :
 
 ```
 python setup.py build
