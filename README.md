@@ -65,7 +65,7 @@ autosrt [-h] [-C CONCURRENCY] [-o OUTPUT] [-F FORMAT]
              [source_path]
 
 positional arguments:
-  source_path           Path to the video or audio file to subtitle
+  source_path           Path to the video or audio file
 
 options:
 
@@ -75,7 +75,7 @@ options:
                         Number of concurrent API requests to make
                         
   -o OUTPUT, --output OUTPUT
-                        Output path for subtitles (by default, 
+                        Output  path  for subtitles  (by default, 
                         subtitles are saved in the same directory 
                         and name as the source path)
                         
@@ -93,16 +93,16 @@ options:
                         
   -p PATIENCE, --patience PATIENCE
                         the patience of retrying to translate.
-                        Expect a positive number. If -1 is 
-                        assigned, the program will try for 
-                        infinite times until there is no 
+                        Expect a positive  number.  If -1 is 
+                        assigned,  the program will  try  for 
+                        infinite  times  until  there  is  no 
                         failures happened in the output.
                         
   -v, --verbose         logs the translation process to console.
   
   --list-formats        List all available subtitle formats
   
-  --list-languages      List all available source/destination languages
+  --list-languages      List all available languages
 ```
 
 ### WARNING!
