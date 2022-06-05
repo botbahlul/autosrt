@@ -12,6 +12,7 @@ pip install pyinstaller
 pyinstaller --onefile __init__.py
 ```
 the compiled file will be placed by pyinstaller into dist subfolder of your working folder
+
 then you can just rename that exeecutable file and put it into a folder that has been added to your PATH ENVIRONTMENT
 
 or you can just install it with python by cloning this git with git clone or download this git as zip and then extract it into a folder and then just type :
