@@ -1,4 +1,4 @@
-# autosrt <a href="https://pypi.org/project/autosrt/0.0.1/"><img src="https://img.shields.io/pypi/v/autosrt.svg"></img></a>
+# autosrt <a href="https://pypi.org/project/autosrt/0.0.1rc1/"><img src="https://img.shields.io/pypi/v/autosrt.svg"></img></a>
 
 ### auto generate subtitle for any video or audio file and translate it for free using googletrans-4.0.0-rc1
 
@@ -24,7 +24,7 @@ if python has already installed on your system you can install this script with 
 
 ```
 pip install ffmpeg
-pip install autosrt
+pip install autosrt==0.0.1rc1
 ```
 
 you can compile this script into a single executable file with pyinstaller by downloading
