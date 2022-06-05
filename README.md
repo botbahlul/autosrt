@@ -21,7 +21,7 @@ or you can just install it with python by cloning this git with git clone or dow
 python setup.py build
 python setup.py install
 ```
-I was succesfuly compiled it in Windows 10 with Pyhton-3.10.4 and python-3.8.12 in Debian 9
+I was succesfuly compiled it with pyinstaller-5.1 and Pyhton-3.10.4 in Windows 10 and python-3.8.12 in Debian 9
 
 it still needs ffmpeg (ffmpeg.exe in Windows) so you have to install it first and make sure it can be reached
 from any folder by adding its location folder into PATH ENVIRONTMENT
