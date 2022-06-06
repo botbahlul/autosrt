@@ -1,6 +1,6 @@
 # autosrt <a href="https://pypi.org/project/autosrt/0.0.1/"><img src="https://img.shields.io/pypi/v/autosrt.svg"></img></a>
 
-### auto generate srt subtitle for any video or audio file and translate it for free using googletrans-4.0.0rc1 https://pypi.org/project/googletrans/4.0.0rc1/#files
+### auto generate subtitle for any video or audio file and translate it for free using googletrans-4.0.0rc1 https://pypi.org/project/googletrans/4.0.0rc1/#files
 
 this script is a modified and combined version of original autosub made by Anastasis Germanidis at https://github.com/agermanidis/autosub
 and translate-srt-subtitles.py made by jaredyam at https://gist.github.com/jaredyam/4fe7527ccf6981595a879c9705e56c51
