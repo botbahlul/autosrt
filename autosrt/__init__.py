@@ -23,7 +23,6 @@ from googletrans import Translator
 import pysrt
 import six
 
-
 GOOGLE_SPEECH_API_KEY = "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"
 GOOGLE_SPEECH_API_URL = "http://www.google.com/speech-api/v2/recognize?client=chromium&lang={lang}&key={key}" # pylint: disable=line-too-long
 DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
@@ -320,19 +319,36 @@ class SpeechRecognizer(object):
 
 
 def which(program):
-    def is_exe(fpath):
-        return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
+    """
+    Return the path for a given executable.
+    """
+    def is_exe(file_path):
+        """
+        Checks whether a file is executable.
+        """
+        return os.path.isfile(file_path) and os.access(file_path, os.X_OK)
 
-    fpath, fname = os.path.split(program)
+    fpath, _ = os.path.split(program)
     if fpath:
         if is_exe(program):
             return program
     else:
         for path in os.environ["PATH"].split(os.pathsep):
             path = path.strip('"')
-            exe_file = os.path.join(path, program + ".exe")
+            exe_file = os.path.join(path, program)
             if is_exe(exe_file):
                 return exe_file
+    return None
+
+
+def ffmpeg_check():
+    """
+    Return the ffmpeg executable name. "None" returned when no executable exists.
+    """
+    if which("ffmpeg"):
+        return "ffmpeg"
+    if which("ffmpeg.exe"):
+        return "ffmpeg.exe"
     return None
 
 
@@ -341,9 +357,9 @@ def extract_audio(filename, channels=1, rate=16000):
     if not os.path.isfile(filename):
         print("The given file does not exist: {0}".format(filename))
         raise Exception("Invalid filepath: {0}".format(filename))
-#    if not which("ffmpeg"):
-#        print("ffmpeg: Executable not found on machine.")
-#        raise Exception("Dependency not found: ffmpeg")
+    if not ffmpeg_check():
+        print("ffmpeg: Executable not found on machine.")
+        raise Exception("Dependency not found: ffmpeg")
     command = ["ffmpeg", "-y", "-i", filename, "-ac", str(channels), "-ar", str(rate), "-loglevel", "error", temp.name]
     subprocess.check_output(command, stdin=open(os.devnull))
     return temp.name, rate
@@ -509,7 +525,8 @@ def main():
     parser.add_argument('-D', '--dst-language', help="Desired language for the subtitles", default="en")
     parser.add_argument('-n', '--rename', type=str, help='rename the output file.')
     parser.add_argument('-p', '--patience', type=int, help='the patience of retrying to translate. Expect a positive number.  If -1 is assigned, the program will try for infinite times until there is no failures happened in the output.')
-    parser.add_argument('-v', '--verbose', action="store_true", help='logs the translation process to console.')
+    parser.add_argument('-V', '--verbose', action="store_true", help='logs the translation process to console.')
+    parser.add_argument('-v', '--version', action='version', version='0.0.2')
     parser.add_argument('--list-formats', help="List all available subtitle formats", action='store_true')
     parser.add_argument('--list-languages', help="List all available source/destination languages", action='store_true')
 
