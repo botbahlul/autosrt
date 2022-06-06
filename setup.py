@@ -19,7 +19,7 @@ long_description = (
 
 setup(
     name='autosrt',
-    version='0.0.1',
+    version='0.0.2',
     description='auto generate subtitle for any video or audio file',
     long_description=long_description,
     author='Bot Bahlul',
