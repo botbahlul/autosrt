@@ -44,7 +44,7 @@ PATH ENVIRONTMENT so you can execute it from anywhere
 
 I was succesfuly compiled it in Windows 10 with pyinstaller-5.1 and Pyhton-3.10.4, and python-3.8.12 in Debian 9
 
-other alternative way you can install this script with python by cloning this git (or downloading this git as zip then extract it into 
+another alternative way to install this script with python is by cloning this git (or downloading this git as zip then extract it into 
 a folder), and then just type :
 
 ```
