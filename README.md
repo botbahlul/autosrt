@@ -125,12 +125,6 @@ options:
   --list-languages      List all available languages
 ```
 
-### WARNING!
-
-PLEASE USE IT WISELY!
-
-DON'T ABUSE GOOGLE TRANSLATE SERVERS WITH HUGE REQUESTS AND MAKES ALL OF US ENDED UP IN 503 SERVICE UNAVAILABLE ERROR!
-
 ### License
 
 MIT
