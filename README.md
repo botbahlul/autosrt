@@ -56,7 +56,7 @@ Simple usage example :
   
 ```
 autosrt --list-languages
-autosrt -S zh-CN -D en filename.mp4
+autosrt -S zh-CN -D en "file name.mp4"
 ```  
 
 ### Usage
