@@ -1,4 +1,4 @@
-# autosrt <a href="https://pypi.org/project/autosrt/0.0.1/"><img src="https://img.shields.io/pypi/v/autosrt.svg"></img></a>
+# autosrt <a href="https://pypi.org/project/autosrt/0.0.2/"><img src="https://img.shields.io/pypi/v/autosrt.svg"></img></a>
 
 ### auto generate subtitle for any video or audio file and translate it for free using googletrans-4.0.0-rc1
 autosrt is a utility for automatic speech recognition and subtitle generation. It takes a video or an audio file as input, 
