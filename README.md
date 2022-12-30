@@ -67,11 +67,13 @@ choose the right apk for your device, install it, then open it
 
 type these commands to get python, pip, this autosrt, (and any other pip packages) :
 
+```
 termux-setup-storage
 pkg update -y
 pkg install -y python
 pkg install -y ffmpeg
 pip install autosrt
+```
 
 After that download your video via any online video downloader
 
@@ -79,8 +81,10 @@ Usualy that video will be placed into /sdcard/Download folder
 
 Now open termux then type:
 
+```
 cd /sdcard/Download
 autosrt -S <source language code> -D <translation language code> <filename.mp4>
+```
 
 ### Usage
 ```
