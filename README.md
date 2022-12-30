@@ -59,6 +59,29 @@ autosrt --list-languages
 autosrt -S zh-CN -D en "file name.mp4"
 ```  
 
+You can also install this script (or any pip package) in android via python package in termux app
+
+https://github.com/termux/termux-app/releases/tag/v0.118.0
+
+choose the right apk for your device, install it, then open it
+
+type these commands to get python, pip, this autosrt, (and any other pip packages) :
+
+termux-setup-storage
+pkg update -y
+pkg install -y python
+pkg install -y ffmpeg
+pip install autosrt
+
+After that download your video via any online video downloader
+
+Usualy that video will be placed into /sdcard/Download folder
+
+Now open termux then type:
+
+cd /sdcard/Download
+autosrt -S <source language code> -D <translation language code> <filename.mp4>
+
 ### Usage
 ```
 autosrt [-h] [-C CONCURRENCY] [-o OUTPUT] [-F FORMAT] [-S SRC_LANGUAGE] [-D DST_LANGUAGE]
