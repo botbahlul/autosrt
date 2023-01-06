@@ -19,7 +19,7 @@ except ImportError:
 
 from googleapiclient.discovery import build
 from progressbar import ProgressBar, Percentage, Bar, ETA
-from googletrans import Translator
+from pygoogletranslation import Translator
 import pysrt
 import six
 
