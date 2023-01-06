@@ -124,9 +124,9 @@ options:
                         
   -v, --verbose         logs the translation process to console.
   
-  --list-formats        List all available subtitle formats
+  -lf, --list-formats   List all available subtitle formats
   
-  --list-languages      List all available source/destination languages
+  -ll, --list-languages List all available source/destination languages
 ```
 
 ### License
