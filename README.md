@@ -11,7 +11,7 @@ this script is a modified and combined version of original autosub made by Anast
 and translate-srt-subtitles.py made by jaredyam at https://gist.github.com/jaredyam/4fe7527ccf6981595a879c9705e56c51
 
 ### Installation
-if you don't have python on your system you can get compiled version from this release asset https://github.com/botbahlul/autosrt/releases/download/autosrt/autosrt.zip
+if you don't have python on your system you can get compiled version from this release asset https://github.com/botbahlul/autosrt/releases/download/autosrt-0.0.3/autosrt-0.0.3.zip
 
 in Windows just extract those ffmpeg.exe and autosrt.exe (in this rar windows folder) into a folder that has been added to PATH ENVIRONTMET
 for example in C:\Windows\system32
