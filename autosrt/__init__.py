@@ -17,7 +17,6 @@ try:
 except ImportError:
     JSONDecodeError = ValueError
 
-from googleapiclient.discovery import build
 from progressbar import ProgressBar, Percentage, Bar, ETA
 from pygoogletranslation import Translator
 import pysrt
