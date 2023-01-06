@@ -32,7 +32,7 @@ setup(
     },
     install_requires=[
         "google-api-python-client>=1.4.2",
-        "googletrans==4.0.0-rc1",
+        "pygoogletranslation>=2.0.6",
         "requests>=2.3.0",
         "pysrt>=1.0.1",
         "progressbar2>=3.34.3",
