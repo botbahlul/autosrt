@@ -729,7 +729,6 @@ def main():
             widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
             pbar = ProgressBar(widgets=widgets, maxval=len(transcripts)).start()
 
-            '''
             with open(translated_file, 'w', encoding='utf-8') as f:
                 for number_in_sequence, timecode, subtitles, count_failure, count_entries in translate(entries, src=args.src_language, dest=args.dst_language, patience=args.patience, verbose=args.verbose):
                     f.write(number_in_sequence)
@@ -740,17 +739,6 @@ def main():
                         e += 1
                         pbar.update(e)
                 pbar.finish()
-            '''
-
-            for i, translated_transcript in enumerate(pool.imap(transcript_translator, transcripts)):
-                translated_transcripts.append(translated_transcript)
-                pbar.update(i)
-            pbar.finish()
-
-            timed_translated_subtitles = [(r, t) for r, t in zip(regions, translated_transcripts) if t]
-            formatter = FORMATTERS.get("srt")
-            formatted_translated_subtitles = formatter(timed_translated_subtitles)
-            translated_srt_file = srt_file[ :-4] + '_translated.srt'
 
             with open(translated_file, 'wb') as f:
                 f.write(formatted_translated_subtitles.encode("utf-8"))
