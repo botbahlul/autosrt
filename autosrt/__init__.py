@@ -385,23 +385,6 @@ class SpeechRecognizer(object):
         except KeyboardInterrupt:
             return
 
-
-class TranscriptTranslator(object):
-    def __init__(self, src, dest):
-        self.src = src
-        self.dest = dest
-
-    def __call__(self, transcript):
-        try:
-            if not transcript == None:
-                translated_transcript = Translator().translate(transcript, src=self.src, dest=self.dest).text
-                return translated_transcript
-            else:
-                return
-        except KeyboardInterrupt:
-            return
-
-
 def which(program):
     """
     Return the path for a given executable.
@@ -705,7 +688,6 @@ def main():
         entries = entries_generator(srt_file)
         translated_file = args.rename if args.rename else srt_file[ :-4] + '_translated.srt'
 
-        transcript_translator = TranscriptTranslator(src=src, dest=dest)
         translated_transcripts = []
 
         if args.verbose:
