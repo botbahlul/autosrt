@@ -20,9 +20,7 @@ you can get original ffmpeg from https://www.ffmpeg.org/
 
 make sure ffmpeg.exe can be reached from any folder by adding its location folder into PATH ENVIRONTMENT
 
-in Linux you're still need ffmpeg, so install it first then extract autosrt file (from this rar linux folder) into 
-/usr/bin/ or /usr/local/bin/ or /usr/sbin/ or /usr/local/sbin/
-
+in Linux if you want a single executable file then you should have python in your os and compile it by your self and ofcourse you're still need to install ffmpeg
 
 if python has already installed on your system you can install this script with pip
 
