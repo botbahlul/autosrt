@@ -20,7 +20,7 @@ you can get original ffmpeg from https://www.ffmpeg.org/
 
 make sure ffmpeg.exe can be reached from any folder by adding its location folder into PATH ENVIRONTMENT
 
-in Linux if you want a single executable file then you should have python in your os and compile it by your self and ofcourse you're still need to install ffmpeg
+in Linux if you want a single executable file then you should have python in your os and compile it by your self with pyinstaller and ofcourse you're still need to install ffmpeg too
 
 if python has already installed on your system you can install this script with pip
 
