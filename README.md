@@ -1,6 +1,6 @@
-# autosrt <a href="https://pypi.org/project/autosrt/"><img src="https://img.shields.io/pypi/v/autosrt.svg"></img></a>
+# autosrt <a href="https://pypi.org/project/autosrt/0.0.3/"><img src="https://img.shields.io/pypi/v/autosrt.svg"></img></a>
 
-### python script to auto generate srt subtitle file for any video or audio file and translate it for free using pygoogletranslation (which is based on googletrans-4.0.0-rc1)
+### auto generate subtitle for any video or audio file and translate it for free using pygoogletranslation 
 autosrt is a utility for automatic speech recognition and subtitle generation. It takes a video or an audio file as input, 
 performs voice activity detection to find speech regions, makes parallel requests to Google Web Speech API to generate 
 transcriptions for those regions, (optionally) translates them to a different language, and finally saves the resulting 
@@ -57,6 +57,11 @@ Simple usage example :
 ```
 autosrt --list-languages
 autosrt -S zh-CN -D en "file name.mp4"
+```  
+
+if you don't need any translations just type:
+```
+autosrt -S zh-CN "file name.mp4"
 ```  
 
 You can also install this script (or any pip package) in android via python package in termux app
