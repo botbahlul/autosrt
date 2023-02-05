@@ -735,7 +735,6 @@ def main():
             widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
             pbar = ProgressBar(widgets=widgets, maxval=total_entries).start()
 
-            '''
             with open(translated_srt_file, 'w', encoding='utf-8') as f:
                 for number_in_sequence, timecode, subtitles, count_failure, count_entries in translate(entries, src=args.src_language, dest=args.dst_language, patience=args.patience, verbose=args.verbose):
                     f.write(number_in_sequence)
@@ -746,7 +745,6 @@ def main():
                         e += 1
                         pbar.update(e)
                 pbar.finish()
-            '''
 
             '''
             subtitle_translator = SubtitleTranslator(src=args.src_language, dest=args.dst_language)
