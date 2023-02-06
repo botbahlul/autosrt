@@ -6,16 +6,16 @@ autosrt is a utility for automatic speech recognition and subtitle generation. I
 This script is a modified version of original autosub made by Anastasis Germanidis at https://github.com/agermanidis/autosub
 
 ### Installation
-if you don't have python on your system you can get compiled version from this release asset https://github.com/botbahlul/autosrt/releases
+If you don't have python on your Windows OS, you can get compiled version from this release asset https://github.com/botbahlul/autosrt/releases
 
-in Windows just extract those ffmpeg.exe and autosrt.exe (in this rar windows folder) into a folder that has been added to PATH ENVIRONTMET
-for example in C:\Windows\system32
+I can't provide single executable for linux distribution because pyinstaller compiled file will only work if your linux packages and libraries has same version as mine (dependencies problems).
 
-you can get original ffmpeg from https://www.ffmpeg.org/
+In Windows just extract those ffmpeg.exe and autosrt.exe (in this rar windows folder) into a folder that has been added to PATH ENVIRONTMET
+For example in C:\Windows\system32
 
-make sure ffmpeg.exe can be reached from any folder by adding its location folder into PATH ENVIRONTMENT
+You can get original ffmpeg from https://www.ffmpeg.org/
 
-in Linux if you want a single executable file then you should have python in your os and compile it by your self with pyinstaller and ofcourse you're still need to install ffmpeg too
+Make sure ffmpeg.exe can be reached from any folder by adding its location folder into PATH ENVIRONTMENT
 
 if python has already installed on your system you can install this script with pip
 
