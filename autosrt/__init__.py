@@ -314,9 +314,49 @@ def srt_formatter(subtitles, padding_before=0, padding_after=0):
     return '\n'.join(six.text_type(item) for item in sub_rip_file)
 
 
+def vtt_formatter(subtitles, padding_before=0, padding_after=0):
+    """
+    Serialize a list of subtitles according to the VTT format, with optional time padding.
+    """
+    text = srt_formatter(subtitles, padding_before, padding_after)
+    text = 'WEBVTT\n\n' + text.replace(',', '.')
+    return text
+
+
+def json_formatter(subtitles):
+    """
+    Serialize a list of subtitles as a JSON blob.
+    """
+    subtitle_dicts = [
+        {
+            'start': start,
+            'end': end,
+            'content': text,
+        }
+        for ((start, end), text)
+        in subtitles
+    ]
+    return json.dumps(subtitle_dicts)
+
+
+def raw_formatter(subtitles):
+    """
+    Serialize a list of subtitles as a newline-delimited string.
+    """
+    return ' '.join(text for (_rng, text) in subtitles)
+
+
 FORMATTERS = {
     'srt': srt_formatter,
+    'vtt': vtt_formatter,
+    'json': json_formatter,
+    'raw': raw_formatter,
 }
+
+
+DEFAULT_SUBTITLE_FORMAT = 'srt'
+DEFAULT_CONCURRENCY = 10
+DEFAULT_SRC_LANGUAGE = 'en'
 
 
 def percentile(arr, percent):
@@ -386,6 +426,32 @@ class SpeechRecognizer(object):
             return
 
 
+class TranscriptTranslator(object):
+    def __init__(self, src, dest, patience=-1):
+        self.src = src
+        self.dest = dest
+        self.patience = patience
+
+    def __call__(self, sentence):
+        translator = Translator()
+        translated_sentence = []
+
+        # handle the special case: empty string.
+        if not sentence:
+            return None
+        translated_sentence = translator.translate(sentence, src=self.src, dest=self.dest).text
+        fail_to_translate = translated_sentence[-1] == '\n'
+        while fail_to_translate and patience:
+            translated_sentence = translator.translate(translated_sentence, src=self.src, dest=self.dest).text
+            if translated_sentence[-1] == '\n':
+                if patience == -1:
+                    continue
+                patience -= 1
+            else:
+                fail_to_translate = False
+        return translated_sentence
+
+'''
 class SubtitleTranslator(object):
     def __init__(self, src, dest, patience=-1, verbose=''):
         self.src = src
@@ -424,7 +490,7 @@ class SubtitleTranslator(object):
             translated_subtitles.append(translated_subtitle + '\n')
 
         return number_in_sequence, timecode, translated_subtitles
-
+'''
 
 def which(program):
     """
@@ -512,9 +578,9 @@ def find_speech_regions(filename, frame_width=4096, min_region_size=0.3, max_reg
     return regions
 
 
-def CountEntries(srt_file):
+def CountEntries(subtitle_file):
     e=0
-    with open(srt_file, 'r', encoding='utf-8') as srt:
+    with open(subtitle_file, 'r', encoding='utf-8') as srt:
         while True:
             e += 1
             # read lines in order
@@ -536,16 +602,16 @@ def CountEntries(srt_file):
     return total_entries
 
 
-def entries_generator(srt_file):
+def entries_generator(subtitle_file):
     """Generate a entries queue.
 
     input:
-        srt_file: The original filename. [*.srt]
+        subtitle_file: The original filename. [*.srt]
 
     output:
         entries: A queue generator.
     """
-    with open(srt_file, 'r', encoding='utf-8') as srt:
+    with open(subtitle_file, 'r', encoding='utf-8') as srt:
         while True:
             # read lines in order
             number_in_sequence = srt.readline()
@@ -563,7 +629,7 @@ def entries_generator(srt_file):
                 subtitles.append(subtitle)
             yield number_in_sequence, timecode, subtitles
 
-
+'''
 def translate(entries, src, dest, patience, verbose):
     """Generate the translated entries.
 
@@ -622,6 +688,7 @@ def translate(entries, src, dest, patience, verbose):
             #print('Total failures: {0}/{1}'.format(count_failure,count_entries))
 
         yield number_in_sequence, timecode, translated_subtitles, count_failure, count_entries
+'''
 
 
 def main():
@@ -631,12 +698,11 @@ def main():
     parser.add_argument('-o', '--output', help="Output path for subtitles (by default, subtitles are saved in the same directory and name as the source path)")
     parser.add_argument('-F', '--format', help="Destination subtitle format", default="srt")
     parser.add_argument('-S', '--src-language', help="Language spoken in source file", default="en")
-    #parser.add_argument('-D', '--dst-language', help="Desired language for the subtitles", default="en")
     parser.add_argument('-D', '--dst-language', help="Desired language for the subtitles")
-    parser.add_argument('-n', '--rename', type=str, help='rename the output file.')
-    parser.add_argument('-p', '--patience', type=int, help='the patience of retrying to translate. Expect a positive number.  If -1 is assigned, the program will try for infinite times until there is no failures happened in the output.')
-    parser.add_argument('-V', '--verbose', action="store_true", help='logs the translation process to console.')
-    parser.add_argument('-v', '--version', action='version', version='1.0.0')
+    #parser.add_argument('-n', '--rename', type=str, help='rename the output file.')
+    #parser.add_argument('-p', '--patience', type=int, help='the patience of retrying to translate. Expect a positive number.  If -1 is assigned, the program will try for infinite times until there is no failures happened in the output.')
+    #parser.add_argument('-V', '--verbose', action="store_true", help='logs the translation process to console.')
+    parser.add_argument('-v', '--version', action='version', version='1.0.1')
     parser.add_argument('-lf', '--list-formats', help="List all available subtitle formats", action='store_true')
     parser.add_argument('-ll', '--list-languages', help="List all available source/destination languages", action='store_true')
 
@@ -706,6 +772,7 @@ def main():
         except KeyboardInterrupt:
             pbar.finish()
             pool.terminate()
+            pool.close()
             pool.join()
             print("Cancelling transcription")
             return 1
@@ -714,32 +781,34 @@ def main():
     formatter = FORMATTERS.get(args.format)
     formatted_subtitles = formatter(timed_subtitles)
 
-    srt_file = args.output
+    subtitle_file = args.output
 
-    if not srt_file:
+    if not subtitle_file:
         base, ext = os.path.splitext(args.source_path)
-        srt_file = "{base}.{format}".format(base=base, format=args.format)
+        subtitle_file = "{base}.{format}".format(base=base, format=args.format)
 
-    with open(srt_file, 'wb') as f:
+    with open(subtitle_file, 'wb') as f:
         f.write(formatted_subtitles.encode("utf-8"))
 
-    with open(srt_file, 'a') as f:
+    with open(subtitle_file, 'a') as f:
         f.write("\n")
 
-    #print("Subtitles file created at {}".format(srt_file))
-
-    os.remove(audio_filename)
+    #print("Subtitles file created at {}".format(subtitle_file))
 
     if do_translate:
-        entries = entries_generator(srt_file)
-        translated_srt_file = args.rename if args.rename else srt_file[ :-4] + '_translated.srt'
-        total_entries = CountEntries(srt_file)
+        entries = entries_generator(subtitle_file)
+        #translated_subtitle_file = args.rename if args.rename else subtitle_file[ :-4] + '_translated.srt'
+        translated_subtitle_file = subtitle_file[ :-4] + '_translated.' + args.format
+        #total_entries = CountEntries(subtitle_file)
 
+
+        '''
+        # ARGUMENT VERBOSE REMOVED
         if args.verbose:
             print("Translating from %5s to %5s         : " %(args.src_language, args.dst_language))
             print('Total Entries', total_entries)
 
-            with open(translated_srt_file, 'w', encoding='utf-8') as f:
+            with open(translated_subtitle_file, 'w', encoding='utf-8') as f:
                 for number_in_sequence, timecode, subtitles, count_failure, count_entries in translate(entries, src=args.src_language, dest=args.dst_language, patience=args.patience, verbose=args.verbose):
                     f.write(number_in_sequence)
                     f.write(timecode)
@@ -748,15 +817,14 @@ def main():
                         f.write('\n')
 
         if not args.verbose:
-            total_entries = CountEntries(srt_file)
+            total_entries = CountEntries(subtitle_file)
 
-            '''
-            # SEQUENTIAL TRANSLATION
+            # SEQUENTIAL TRANSLATION USING 'def translate()'
             e=0
             prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
             widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
             pbar = ProgressBar(widgets=widgets, maxval=total_entries).start()
-            with open(translated_srt_file, 'w', encoding='utf-8') as f:
+            with open(translated_subtitle_file, 'w', encoding='utf-8') as f:
                 for number_in_sequence, timecode, subtitles, count_failure, count_entries in translate(entries, src=args.src_language, dest=args.dst_language, patience=args.patience, verbose=args.verbose):
                     f.write(number_in_sequence)
                     f.write(timecode)
@@ -766,45 +834,86 @@ def main():
                         e += 1
                         pbar.update(e)
                 pbar.finish()
-            '''
 
-            # CONCURRENT TRANSLATION
-            prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
-            widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
-            pbar = ProgressBar(widgets=widgets, maxval=total_entries).start()
-            subtitle_translator = SubtitleTranslator(src=args.src_language, dest=args.dst_languagesubtitle_translator = SubtitleTranslator(src=args.src_language, dest=args.dst_language, patience=args.patience, verbose=args.verbose)
-            translated_entries = []
-            for i, translated_entry in enumerate(pool.imap(subtitle_translator, entries)):
-                translated_entries.append(translated_entry)
-                pbar.update(i)
+        # ARGUMENT VERBOSE REMOVED
+        # SEQUENTIAL TRANSLATION USING 'def translate()'
+        e=0
+        prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
+        widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
+        pbar = ProgressBar(widgets=widgets, maxval=total_entries).start()
+        with open(translated_subtitle_file, 'w', encoding='utf-8') as f:
+            for number_in_sequence, timecode, subtitles, count_failure, count_entries in translate(entries, src=args.src_language, dest=args.dst_language, patience=args.patience, verbose=args.verbose):
+                f.write(number_in_sequence)
+                f.write(timecode)
+                for subtitle in subtitles:
+                    f.write(subtitle)
+                    f.write('\n')
+                    e += 1
+                    pbar.update(e)
             pbar.finish()
+        '''
 
-            with open(translated_srt_file, 'w', encoding='utf-8') as f:
-                for number_in_sequence, timecode, translated_subtitles in translated_entries:
-                    f.write(number_in_sequence)
-                    f.write(timecode)
-                    for translated_subtitle in translated_subtitles:
-                        f.write(translated_subtitle)
-                        f.write('\n')
+        '''
+        # ARGUMENT VERBOSE REMOVED
+        # CONCURRENT TRANSLATION USING class SubtitleTranslator
+        prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
+        widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
+        pbar = ProgressBar(widgets=widgets, maxval=total_entries).start()
+        subtitle_translator = SubtitleTranslator(src=args.src_language, dest=args.dst_language, patience=args.patience, verbose=args.verbose)
+        translated_entries = []
+        for i, translated_entry in enumerate(pool.imap(subtitle_translator, entries)):
+            translated_entries.append(translated_entry)
+            pbar.update(i)
+        pbar.finish()
 
+        with open(translated_subtitle_file, 'w', encoding='utf-8') as f:
+            for number_in_sequence, timecode, translated_subtitles in translated_entries:
+                f.write(number_in_sequence)
+                f.write(timecode)
+                for translated_subtitle in translated_subtitles:
+                    f.write(translated_subtitle)
+                    f.write('\n')
+        '''
+
+        # ARGUMENT VERBOSE REMOVED
+        # CONCURRENT TRANSLATION USING class TranscriptTranslator
+        prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
+        widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
+        pbar = ProgressBar(widgets=widgets, maxval=len(transcripts)).start()
+        sentence_translator = TranscriptTranslator(src=args.src_language, dest=args.dst_language)
+        translated_transcripts = []
+        for i, translated_transcript in enumerate(pool.imap(sentence_translator, transcripts)):
+            translated_transcripts.append(translated_transcript)
+            pbar.update(i)
+        pbar.finish()
+
+        timed_translated_subtitles = [(r, t) for r, t in zip(regions, translated_transcripts) if t]
+        formatter = FORMATTERS.get(args.format)
+        formatted_translated_subtitles = formatter(timed_translated_subtitles)
+
+        with open(translated_subtitle_file, 'wb') as f:
+            f.write(formatted_translated_subtitles.encode("utf-8"))
+        with open(translated_subtitle_file, 'a') as f:
+            f.write("\n")
+
+    os.remove(audio_filename)
 
     print('Done.')
     if do_translate:
-        print("Original subtitles file created at      : {}".format(srt_file))
-        print('Translated subtitles file created at    : {}' .format(translated_srt_file))
-        if args.verbose:
-            print('Total failure to translate entries      : {0}/{1}'.format(count_failure, count_entries))
-            failure_ratio = count_failure / count_entries
-            if failure_ratio > 0:
-                print('If you expect a lower failure ratio or completed translate, please check out the usage of [-p | --postion] argument.')
+        print("Original subtitles file created at      : {}".format(subtitle_file))
+        print('Translated subtitles file created at    : {}' .format(translated_subtitle_file))
+        #if args.verbose:
+            #print('Total failure to translate entries      : {0}/{1}'.format(count_failure, count_entries))
+            #failure_ratio = count_failure / count_entries
+            #if failure_ratio > 0:
+                #print('If you expect a lower failure ratio or completed translate, please check out the usage of [-p | --postion] argument.')
     else:
-        print("Subtitles file created at      : {}".format(srt_file))
+        print("Subtitles file created at      : {}".format(subtitle_file))
 
     pool.close()
     pool.join()
 
     return 0
-
 
 if __name__ == '__main__':
     multiprocessing.freeze_support()

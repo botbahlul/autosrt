@@ -5,10 +5,10 @@ autosrt is a utility for automatic speech recognition and subtitle generation. I
 performs voice activity detection to find speech regions, makes parallel requests to Google Web Speech API to generate 
 transcriptions for those regions, (optionally) translates them to a different language, and finally saves the resulting 
 subtitles to disk. It supports a variety of input and output languages (to see which, run the utility with --list-languages 
-as argument respectively) and can currently produce subtitles in SRT format.
+or -ll as argument respectively) and can currently produce subtitles in SRT, VTT, JSON, and RAW format. You can check it 
+with --list-format or -lf as argument.
 
-this script is a modified and combined version of original autosub made by Anastasis Germanidis at https://github.com/agermanidis/autosub
-and translate-srt-subtitles.py made by jaredyam at https://gist.github.com/jaredyam/4fe7527ccf6981595a879c9705e56c51
+this script is a modified version of original autosub made by Anastasis Germanidis at https://github.com/agermanidis/autosub
 
 ### Installation
 if you don't have python on your system you can get compiled version from this release asset https://github.com/botbahlul/autosrt/releases/download/autosrt-0.0.3/autosrt-0.0.3.zip
@@ -117,16 +117,6 @@ options:
   -D DST_LANGUAGE, --dst-language DST_LANGUAGE
                         Desired language for the subtitles
                         
-  -n RENAME, --rename RENAME
-                        rename the output file.
-                        
-  -p PATIENCE, --patience PATIENCE
-                        the patience of retrying to translate. Expect a positive number. 
-                        If -1 is assigned, the program will try for infinite times until 
-                        there is no failures happened in the output.
-                        
-  -v, --verbose         logs the translation process to console.
-  
   -lf, --list-formats   List all available subtitle formats
   
   -ll, --list-languages List all available source/destination languages
