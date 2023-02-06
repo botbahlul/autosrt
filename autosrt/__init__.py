@@ -772,7 +772,7 @@ def main():
             prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
             widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
             pbar = ProgressBar(widgets=widgets, maxval=total_entries).start()
-            subtitle_translator = SubtitleTranslator(src=args.src_language, dest=args.dst_language)
+            subtitle_translator = SubtitleTranslator(src=args.src_language, dest=args.dst_languagesubtitle_translator = SubtitleTranslator(src=args.src_language, dest=args.dst_language, patience=args.patience, verbose=args.verbose)
             translated_entries = []
             for i, translated_entry in enumerate(pool.imap(subtitle_translator, entries)):
                 translated_entries.append(translated_entry)
