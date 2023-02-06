@@ -1,12 +1,7 @@
 # autosrt <a href="https://pypi.org/project/autosrt/0.0.3/"><img src="https://img.shields.io/pypi/v/autosrt.svg"></img></a>
 
 ### auto generate subtitle for any video or audio file and translate it for free using pygoogletranslation 
-autosrt is a utility for automatic speech recognition and subtitle generation. It takes a video or an audio file as input, 
-performs voice activity detection to find speech regions, makes parallel requests to Google Web Speech API to generate 
-transcriptions for those regions, (optionally) translates them to a different language, and finally saves the resulting 
-subtitles to disk. It supports a variety of input and output languages (to see which, run the utility with --list-languages 
-or -ll as argument respectively) and can currently produce subtitles in SRT, VTT, JSON, and RAW format. You can check it 
-with --list-format or -lf as argument.
+autosrt is a utility for automatic speech recognition and subtitle generation. It takes a video or an audio file as input, performs voice activity detection to find speech regions, makes parallel requests to Google Web Speech API to generate transcriptions for those regions, (optionally) translates them to a different language, and finally saves the resulting subtitles to disk. It supports a variety of input and output languages (to see which, run the utility with --list-languages or -ll as argument respectively) and can currently produce subtitles in SRT, VTT, JSON, and RAW format. You can check it with --list-format or -lf as argument.
 
 this script is a modified version of original autosub made by Anastasis Germanidis at https://github.com/agermanidis/autosub
 
