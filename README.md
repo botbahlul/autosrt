@@ -25,7 +25,7 @@ in Linux if you want a single executable file then you should have python in you
 if python has already installed on your system you can install this script with pip
 
 ```
-apt install -y ffmpeg
+pip install ffmpeg
 pip install autosrt
 ```
 

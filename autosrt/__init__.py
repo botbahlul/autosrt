@@ -387,9 +387,11 @@ class SpeechRecognizer(object):
 
 
 class SubtitleTranslator(object):
-    def __init__(self, src, dest):
+    def __init__(self, src, dest, patience=-1, verbose=''):
         self.src = src
         self.dest = dest
+        self.patience = patience
+        self.verbose = verbose
 
     def __call__(self, entries):
         translator = Translator()
@@ -401,7 +403,24 @@ class SubtitleTranslator(object):
             if not subtitle:
                 translated_subtitles.append(subtitle)
             translated_subtitle = translator.translate(subtitle, src=self.src, dest=self.dest).text
-            translated_subtitle = translator.translate(translated_subtitle, src=self.src, dest=self.dest).text
+            fail_to_translate = translated_subtitle[-1] == '\n'
+            while fail_to_translate and patience:
+                if verbose:
+                    print('[Failure] Retry to translate...')
+                    print('The translated subtitle: {}', end=''.format(translated_subtitle))
+                translated_subtitle = translator.translate(translated_subtitle, src=self.src, dest=self.dest).text
+                if translated_subtitle[-1] == '\n':
+                    if patience == -1:
+                        continue
+                    if patience == 1:
+                        if verbose:
+                            print('This subtitle failed to translate... [Position] entry {0} line {1}'.format(count_entries,i))
+                    patience -= 1
+                else:
+                    fail_to_translate = False
+                    if verbose:
+                        print('Translate successfully. The result: {}'.format(translated_subtitle))
+
             translated_subtitles.append(translated_subtitle + '\n')
 
         return number_in_sequence, timecode, translated_subtitles
@@ -617,7 +636,7 @@ def main():
     parser.add_argument('-n', '--rename', type=str, help='rename the output file.')
     parser.add_argument('-p', '--patience', type=int, help='the patience of retrying to translate. Expect a positive number.  If -1 is assigned, the program will try for infinite times until there is no failures happened in the output.')
     parser.add_argument('-V', '--verbose', action="store_true", help='logs the translation process to console.')
-    parser.add_argument('-v', '--version', action='version', version='0.0.5')
+    parser.add_argument('-v', '--version', action='version', version='1.0.0')
     parser.add_argument('-lf', '--list-formats', help="List all available subtitle formats", action='store_true')
     parser.add_argument('-ll', '--list-languages', help="List all available source/destination languages", action='store_true')
 
@@ -730,11 +749,13 @@ def main():
 
         if not args.verbose:
             total_entries = CountEntries(srt_file)
+
+            '''
+            # SEQUENTIAL TRANSLATION
             e=0
             prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
             widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
             pbar = ProgressBar(widgets=widgets, maxval=total_entries).start()
-
             with open(translated_srt_file, 'w', encoding='utf-8') as f:
                 for number_in_sequence, timecode, subtitles, count_failure, count_entries in translate(entries, src=args.src_language, dest=args.dst_language, patience=args.patience, verbose=args.verbose):
                     f.write(number_in_sequence)
@@ -745,8 +766,12 @@ def main():
                         e += 1
                         pbar.update(e)
                 pbar.finish()
-
             '''
+
+            # CONCURRENT TRANSLATION
+            prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
+            widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
+            pbar = ProgressBar(widgets=widgets, maxval=total_entries).start()
             subtitle_translator = SubtitleTranslator(src=args.src_language, dest=args.dst_language)
             translated_entries = []
             for i, translated_entry in enumerate(pool.imap(subtitle_translator, entries)):
@@ -761,7 +786,7 @@ def main():
                     for translated_subtitle in translated_subtitles:
                         f.write(translated_subtitle)
                         f.write('\n')
-            '''
+
 
     print('Done.')
     if do_translate:
@@ -779,6 +804,7 @@ def main():
     pool.join()
 
     return 0
+
 
 if __name__ == '__main__':
     multiprocessing.freeze_support()
