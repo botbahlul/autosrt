@@ -702,7 +702,7 @@ def main():
     #parser.add_argument('-n', '--rename', type=str, help='rename the output file.')
     #parser.add_argument('-p', '--patience', type=int, help='the patience of retrying to translate. Expect a positive number.  If -1 is assigned, the program will try for infinite times until there is no failures happened in the output.')
     #parser.add_argument('-V', '--verbose', action="store_true", help='logs the translation process to console.')
-    parser.add_argument('-v', '--version', action='version', version='1.0.1')
+    parser.add_argument('-v', '--version', action='version', version='1.0.2')
     parser.add_argument('-lf', '--list-formats', help="List all available subtitle formats", action='store_true')
     parser.add_argument('-ll', '--list-languages', help="List all available source/destination languages", action='store_true')
 
