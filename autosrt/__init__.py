@@ -110,7 +110,7 @@ arraylist_language_code.append("mr");
 arraylist_language_code.append("mni");
 arraylist_language_code.append("lus");
 arraylist_language_code.append("mn");
-arraylist_language_code.append("mmr");
+arraylist_language_code.append("my");
 arraylist_language_code.append("ne");
 arraylist_language_code.append("no");
 arraylist_language_code.append("or");
