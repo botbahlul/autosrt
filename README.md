@@ -7,7 +7,8 @@ this script is a modified version of original autosub made by Anastasis Germanid
 
 
 ### Installation
-if you don't have python on your Windows system you can get compiled version from https://github.com/botbahlul/autosrt/releases/download/autosrt-0.0.3/autosrt-0.0.3.zip
+if you don't have python on your Windows system you can get compiled version from this git release assets
+https://github.com/botbahlul/autosrt/releases
 
 just extract those ffmpeg.exe and autosrt.exe into a folder that has been added to PATH ENVIRONTMET for example in C:\Windows\system32
 
