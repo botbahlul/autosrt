@@ -65,7 +65,7 @@ autosrt --list-languages
 autosrt -S zh-CN -D en "Episode 1.mp4"
 ```
 
-### usage 
+### Usage
 
 ```
 autosrt [-h] [-C CONCURRENCY] [-o OUTPUT] [-F FORMAT]
