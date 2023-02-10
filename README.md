@@ -89,12 +89,6 @@ options:
                         Language spoken in source file
   -D DST_LANGUAGE, --dst-language DST_LANGUAGE
                         Desired language for the subtitles
-  -n RENAME, --rename RENAME
-                        rename the output file.
-  -p PATIENCE, --patience PATIENCE
-                        the patience of retrying to translate. Expect a positive number. If -1 is assigned, the program will try for
-                        infinite times until there is no failures happened in the output.
-  -V, --verbose         logs the translation process to console.
   -v, --version         show program's version number and exit
   -lf, --list-formats   List all available subtitle formats
   -ll, --list-languages
