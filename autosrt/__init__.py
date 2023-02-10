@@ -426,7 +426,7 @@ class SpeechRecognizer(object):
             return
 
 
-class TranscriptTranslator(object):
+class SentenceTranslator(object):
     def __init__(self, src, dest, patience=-1):
         self.src = src
         self.dest = dest
@@ -702,7 +702,7 @@ def main():
     #parser.add_argument('-n', '--rename', type=str, help='rename the output file.')
     #parser.add_argument('-p', '--patience', type=int, help='the patience of retrying to translate. Expect a positive number.  If -1 is assigned, the program will try for infinite times until there is no failures happened in the output.')
     #parser.add_argument('-V', '--verbose', action="store_true", help='logs the translation process to console.')
-    parser.add_argument('-v', '--version', action='version', version='1.0.3')
+    parser.add_argument('-v', '--version', action='version', version='1.0.4')
     parser.add_argument('-lf', '--list-formats', help="List all available subtitle formats", action='store_true')
     parser.add_argument('-ll', '--list-languages', help="List all available source/destination languages", action='store_true')
 
@@ -876,11 +876,11 @@ def main():
         '''
 
         # ARGUMENT VERBOSE REMOVED
-        # CONCURRENT TRANSLATION USING class TranscriptTranslator
+        # CONCURRENT TRANSLATION USING class SentenceTranslator
         prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
         widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
         pbar = ProgressBar(widgets=widgets, maxval=len(transcripts)).start()
-        sentence_translator = TranscriptTranslator(src=args.src_language, dest=args.dst_language)
+        sentence_translator = SentenceTranslator(src=args.src_language, dest=args.dst_language)
         translated_transcripts = []
         for i, translated_transcript in enumerate(pool.imap(sentence_translator, transcripts)):
             translated_transcripts.append(translated_transcript)
