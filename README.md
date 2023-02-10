@@ -104,3 +104,5 @@ options:
 ### License
 
 MIT
+
+Check my other SPEECH RECOGNITIION + TRANSLATE PROJECTS in https://botbahlul.github.io
