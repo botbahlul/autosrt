@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 from __future__ import absolute_import, print_function, unicode_literals
-
 import argparse
 import audioop
 import math
@@ -16,9 +15,8 @@ try:
     from json.decoder import JSONDecodeError
 except ImportError:
     JSONDecodeError = ValueError
-
 from progressbar import ProgressBar, Percentage, Bar, ETA
-from pygoogletranslation import Translator
+from googletrans import Translator
 import pysrt
 import six
 
@@ -282,7 +280,7 @@ arraylist_language.append("Tigrinya");
 arraylist_language.append("Tsonga");
 arraylist_language.append("Turkish");
 arraylist_language.append("Turkmen");
-arraylist_language.append("Twi (Akan)";
+arraylist_language.append("Twi (Akan)");
 arraylist_language.append("Ukrainian");
 arraylist_language.append("Urdu");
 arraylist_language.append("Uyghur");
@@ -702,7 +700,7 @@ def main():
     #parser.add_argument('-n', '--rename', type=str, help='rename the output file.')
     #parser.add_argument('-p', '--patience', type=int, help='the patience of retrying to translate. Expect a positive number.  If -1 is assigned, the program will try for infinite times until there is no failures happened in the output.')
     #parser.add_argument('-V', '--verbose', action="store_true", help='logs the translation process to console.')
-    parser.add_argument('-v', '--version', action='version', version='1.0.4')
+    parser.add_argument('-v', '--version', action='version', version='1.0.6')
     parser.add_argument('-lf', '--list-formats', help="List all available subtitle formats", action='store_true')
     parser.add_argument('-ll', '--list-languages', help="List all available source/destination languages", action='store_true')
 
@@ -875,6 +873,7 @@ def main():
                     f.write('\n')
         '''
 
+        '''
         # ARGUMENT VERBOSE REMOVED
         # CONCURRENT TRANSLATION USING class SentenceTranslator
         prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
@@ -895,6 +894,37 @@ def main():
             f.write(formatted_translated_subtitles.encode("utf-8"))
         with open(translated_subtitle_file, 'a') as f:
             f.write("\n")
+        '''
+
+        # ARGUMENT VERBOSE REMOVED
+        # AND CONCURRENT TRANSLATION USING class SentenceTranslator(object)
+        # BUT NO NEED TO TRANSLATE ALL transcript IN transcripts (BECAUSE SOME region in regions MAY JUST HAVE EMPTY STRING transcript)
+        # JUST TRANSLATE ALREADY CREATED subtitles ENTRIES FROM timed_subtitles
+        created_regions = []
+        created_subtitles = []
+        for entry in timed_subtitles:
+            created_regions.append(entry[0])
+            created_subtitles.append(entry[1])
+
+        prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
+        widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
+        pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
+        transcript_translator = SentenceTranslator(src=args.src_language, dest=args.dst_language)
+        translated_subtitles = []
+        for i, translated_subtitle in enumerate(pool.imap(transcript_translator, created_subtitles)):
+            translated_subtitles.append(translated_subtitle)
+            pbar.update(i)
+        pbar.finish()
+
+        timed_translated_subtitles = [(r, t) for r, t in zip(created_regions, translated_subtitles) if t]
+        formatter = FORMATTERS.get(args.format)
+        formatted_translated_subtitles = formatter(timed_translated_subtitles)
+
+        with open(translated_subtitle_file, 'wb') as tf:
+            tf.write(formatted_translated_subtitles.encode("utf-8"))
+
+        with open(translated_subtitle_file, 'a') as tf:
+            tf.write("\n")
 
     os.remove(audio_filename)
 
