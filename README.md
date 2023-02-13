@@ -68,14 +68,10 @@ autosrt -S zh-CN -D en "Episode 1.mp4"
 ### Usage
 
 ```
-autosrt [-h] [-C CONCURRENCY] [-o OUTPUT] [-F FORMAT]
-             [-S SRC_LANGUAGE] [-D DST_LANGUAGE]
-             [-n RENAME] [-p PATIENCE] [-v]
-             [--list-formats] [--list-languages]
-             [source_path]
+autosrt [-h] [-C CONCURRENCY] [-o OUTPUT] [-F FORMAT] [-S SRC_LANGUAGE] [-D DST_LANGUAGE] [-v] [-lf] [-ll] [source_path]
 
 positional arguments:
-  source_path           Path to the video or audio file
+  source_path           Path to the video or audio file to subtitle
 
 options:
   -h, --help            show this help message and exit
