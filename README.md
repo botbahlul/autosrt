@@ -65,6 +65,11 @@ autosrt --list-languages
 autosrt -S zh-CN -D en "Episode 1.mp4"
 ```
 
+If you don't need translations just type :
+```
+autosrt -S zh-CN "Episode 1.mp4"
+```
+
 ### Usage
 
 ```
