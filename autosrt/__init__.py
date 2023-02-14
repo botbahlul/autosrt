@@ -423,21 +423,24 @@ class SpeechRecognizer(object):
             return
 
 
-async def GoogleTranslate(text, src, dst):
+def GoogleTranslate(text, src, dst):
     url = 'https://translate.googleapis.com/translate_a/'
     params = 'single?client=gtx&sl='+src+'&tl='+dst+'&dt=t&q='+text;
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url+params)
-        #print('response = {}'.format(response))
-        response_json = response.json()[0]
-        #print('response_json = {}'.format(response_json))
-        length = len(response_json)
-        #print('length = {}'.format(length))
-        translation = ""
-        for i in range(length):
-            #print("{} {}".format(i, response_json[i][0]))
-            translation = translation + response_json[i][0]
-        return translation
+    with httpx.Client(http2=True) as client:
+        client.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Referer': 'https://translate.google.com',})
+        response = client.get(url+params)
+        #print('response.status_code = {}'.format(response.status_code))
+        if response.status_code == 200:
+            response_json = response.json()[0]
+            #print('response_json = {}'.format(response_json))
+            length = len(response_json)
+            #print('length = {}'.format(length))
+            translation = ""
+            for i in range(length):
+                #print("{} {}".format(i, response_json[i][0]))
+                translation = translation + response_json[i][0]
+            return translation
+        return
 
 
 class SentenceTranslator(object):
@@ -451,7 +454,9 @@ class SentenceTranslator(object):
         # handle the special case: empty string.
         if not sentence:
             return None
-        translated_sentence = asyncio.get_event_loop().run_until_complete(GoogleTranslate(sentence, src=self.src, dst=self.dest)) # using self made GoogleTranslate()
+
+        translated_sentence = GoogleTranslate(sentence, src=self.src, dst=self.dest)
+
         fail_to_translate = translated_sentence[-1] == '\n'
         while fail_to_translate and patience:
             translated_sentence = translator.translate(translated_sentence, src=self.src, dest=self.dest).text
@@ -554,7 +559,7 @@ def main():
     parser.add_argument('-F', '--format', help="Destination subtitle format", default="srt")
     parser.add_argument('-S', '--src-language', help="Language spoken in source file", default="en")
     parser.add_argument('-D', '--dst-language', help="Desired language for the subtitles")
-    parser.add_argument('-v', '--version', action='version', version='1.0.7')
+    parser.add_argument('-v', '--version', action='version', version='1.0.8')
     parser.add_argument('-lf', '--list-formats', help="List all available subtitle formats", action='store_true')
     parser.add_argument('-ll', '--list-languages', help="List all available source/destination languages", action='store_true')
 
