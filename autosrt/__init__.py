@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# ORIGINAL AUTOSUB IMPORTS
 from __future__ import absolute_import, print_function, unicode_literals
 import argparse
 import audioop
@@ -16,13 +17,16 @@ try:
 except ImportError:
     JSONDecodeError = ValueError
 from progressbar import ProgressBar, Percentage, Bar, ETA
-from googletrans import Translator
 import pysrt
 import six
+# ADDITIONAL IMPORT FOR GoogleTranslate()
+import asyncio
+import httpx
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 GOOGLE_SPEECH_API_KEY = "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"
 GOOGLE_SPEECH_API_URL = "http://www.google.com/speech-api/v2/recognize?client=chromium&lang={lang}&key={key}" # pylint: disable=line-too-long
-DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
 
 arraylist_language_code = []
 arraylist_language_code.append("af")
@@ -352,11 +356,6 @@ FORMATTERS = {
 }
 
 
-DEFAULT_SUBTITLE_FORMAT = 'srt'
-DEFAULT_CONCURRENCY = 10
-DEFAULT_SRC_LANGUAGE = 'en'
-
-
 def percentile(arr, percent):
     arr = sorted(arr)
     k = (len(arr) - 1) * percent
@@ -424,6 +423,23 @@ class SpeechRecognizer(object):
             return
 
 
+async def GoogleTranslate(text, src, dst):
+    url = 'https://translate.googleapis.com/translate_a/'
+    params = 'single?client=gtx&sl='+src+'&tl='+dst+'&dt=t&q='+text;
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url+params)
+        #print('response = {}'.format(response))
+        response_json = response.json()[0]
+        #print('response_json = {}'.format(response_json))
+        length = len(response_json)
+        #print('length = {}'.format(length))
+        translation = ""
+        for i in range(length):
+            #print("{} {}".format(i, response_json[i][0]))
+            translation = translation + response_json[i][0]
+        return translation
+
+
 class SentenceTranslator(object):
     def __init__(self, src, dest, patience=-1):
         self.src = src
@@ -431,13 +447,11 @@ class SentenceTranslator(object):
         self.patience = patience
 
     def __call__(self, sentence):
-        translator = Translator()
         translated_sentence = []
-
         # handle the special case: empty string.
         if not sentence:
             return None
-        translated_sentence = translator.translate(sentence, src=self.src, dest=self.dest).text
+        translated_sentence = asyncio.get_event_loop().run_until_complete(GoogleTranslate(sentence, src=self.src, dst=self.dest)) # using self made GoogleTranslate()
         fail_to_translate = translated_sentence[-1] == '\n'
         while fail_to_translate and patience:
             translated_sentence = translator.translate(translated_sentence, src=self.src, dest=self.dest).text
@@ -449,46 +463,6 @@ class SentenceTranslator(object):
                 fail_to_translate = False
         return translated_sentence
 
-'''
-class SubtitleTranslator(object):
-    def __init__(self, src, dest, patience=-1, verbose=''):
-        self.src = src
-        self.dest = dest
-        self.patience = patience
-        self.verbose = verbose
-
-    def __call__(self, entries):
-        translator = Translator()
-        translated_subtitles = []
-        number_in_sequence, timecode, subtitles = entries
-
-        for i, subtitle in enumerate(subtitles, 1):
-            # handle the special case: empty string.
-            if not subtitle:
-                translated_subtitles.append(subtitle)
-            translated_subtitle = translator.translate(subtitle, src=self.src, dest=self.dest).text
-            fail_to_translate = translated_subtitle[-1] == '\n'
-            while fail_to_translate and patience:
-                if verbose:
-                    print('[Failure] Retry to translate...')
-                    print('The translated subtitle: {}', end=''.format(translated_subtitle))
-                translated_subtitle = translator.translate(translated_subtitle, src=self.src, dest=self.dest).text
-                if translated_subtitle[-1] == '\n':
-                    if patience == -1:
-                        continue
-                    if patience == 1:
-                        if verbose:
-                            print('This subtitle failed to translate... [Position] entry {0} line {1}'.format(count_entries,i))
-                    patience -= 1
-                else:
-                    fail_to_translate = False
-                    if verbose:
-                        print('Translate successfully. The result: {}'.format(translated_subtitle))
-
-            translated_subtitles.append(translated_subtitle + '\n')
-
-        return number_in_sequence, timecode, translated_subtitles
-'''
 
 def which(program):
     """
@@ -523,8 +497,8 @@ def ffmpeg_check():
         return "ffmpeg.exe"
     return None
 
-
-def extract_audio(filename, channels=1, rate=16000):
+#def extract_audio(filename, channels=1, rate=16000):
+def extract_audio(filename, channels=1, rate=48000):
     temp = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
     if not os.path.isfile(filename):
         print("The given file does not exist: {0}".format(filename))
@@ -537,8 +511,8 @@ def extract_audio(filename, channels=1, rate=16000):
     return temp.name, rate
 
 
-#def find_speech_regions(filename, frame_width=4096, min_region_size=0.5, max_region_size=6):
-def find_speech_regions(filename, frame_width=4096, min_region_size=0.3, max_region_size=8):
+def find_speech_regions(filename, frame_width=4096, min_region_size=0.5, max_region_size=6):
+#def find_speech_regions(filename, frame_width=4096, min_region_size=0.3, max_region_size=8):
     reader = wave.open(filename)
     sample_width = reader.getsampwidth()
     rate = reader.getframerate()
@@ -555,138 +529,21 @@ def find_speech_regions(filename, frame_width=4096, min_region_size=0.3, max_reg
         energies.append(audioop.rms(chunk, sample_width * n_channels))
 
     threshold = percentile(energies, 0.2)
-
     elapsed_time = 0
-
     regions = []
     region_start = None
 
     for energy in energies:
         is_silence = energy <= threshold
         max_exceeded = region_start and elapsed_time - region_start >= max_region_size
-
         if (max_exceeded or is_silence) and region_start:
             if elapsed_time - region_start >= min_region_size:
                 regions.append((region_start, elapsed_time))
                 region_start = None
-
         elif (not region_start) and (not is_silence):
             region_start = elapsed_time
         elapsed_time += chunk_duration
     return regions
-
-
-def CountEntries(subtitle_file):
-    e=0
-    with open(subtitle_file, 'r', encoding='utf-8') as srt:
-        while True:
-            e += 1
-            # read lines in order
-            number_in_sequence = srt.readline()
-            timecode = srt.readline()
-            # whether it's the end of the file.
-            if not number_in_sequence:
-                break
-            # put all subtitles seperated by newline into a list.
-            subtitles = []
-            while True:
-                subtitle = srt.readline()
-                # whether it's the end of a entry.
-                if subtitle == '\n':
-                    break
-                subtitles.append(subtitle)
-    total_entries = e - 1
-    #print('Total Entries', total_entries)
-    return total_entries
-
-
-def entries_generator(subtitle_file):
-    """Generate a entries queue.
-
-    input:
-        subtitle_file: The original filename. [*.srt]
-
-    output:
-        entries: A queue generator.
-    """
-    with open(subtitle_file, 'r', encoding='utf-8') as srt:
-        while True:
-            # read lines in order
-            number_in_sequence = srt.readline()
-            timecode = srt.readline()
-            # whether it's the end of the file.
-            if not number_in_sequence:
-                break
-            # put all subtitles seperated by newline into a list.
-            subtitles = []
-            while True:
-                subtitle = srt.readline()
-                # whether it's the end of a entry.
-                if subtitle == '\n':
-                    break
-                subtitles.append(subtitle)
-            yield number_in_sequence, timecode, subtitles
-
-'''
-def translate(entries, src, dest, patience, verbose):
-    """Generate the translated entries.
-
-    args:
-        entries: The entries queue.
-        src: The source language.
-        dest: The target language.
-    """
-    translator = Translator()
-    count_failure = 0
-    count_entries = 0
-
-    for number_in_sequence, timecode, subtitles in entries:
-        count_entries += 1
-        translated_subtitles = []
-
-        for i, subtitle in enumerate(subtitles, 1):
-            # handle the special case: empty string.
-            if not subtitle:
-                translated_subtitles.append(subtitle)
-                continue
-            translated_subtitle = translator.translate(subtitle, src=src, dest=dest).text
-            # handle the fail to translate case.
-            fail_to_translate = translated_subtitle[-1] == '\n'
-            while fail_to_translate and patience:
-                if verbose:
-                    print('[Failure] Retry to translate...')
-                    print('The translated subtitle: {}', end=''.format(translated_subtitle))
-
-                translated_subtitle = translator.translate(translated_subtitle, src=src, dest=dest).text
-                if translated_subtitle[-1] == '\n':
-                    if patience == -1:
-                        continue
-                    if patience == 1:
-                        if verbose:
-                            print('This subtitle failed to translate... [Position] entry {0} line {1}'.format(count_entries,i))
-                    patience -= 1
-                else:
-                    fail_to_translate = False
-                    if verbose:
-                        print('Translate successfully. The result: {}'.format(translated_subtitle))
-
-            translated_subtitles.append(translated_subtitle if fail_to_translate else translated_subtitle + '\n')
-
-        if verbose:
-            print('Current number in sequence: {}'.format(count_entries))
-            print('The translation result:', end=' ')
-            #print(f"{''.join(translated_subtitles)}")
-            print("{}".join(translated_subtitles), end='')
-        else:
-            if fail_to_translate:
-                count_failure += 1
-                print('[{}] Failure to translate current entry...'.format(count_entries))
-            #else:
-                #print('[{}] Current entry has been translated...'.format(count_entries))
-            #print('Total failures: {0}/{1}'.format(count_failure,count_entries))
-
-        yield number_in_sequence, timecode, translated_subtitles, count_failure, count_entries
-'''
 
 
 def main():
@@ -697,10 +554,7 @@ def main():
     parser.add_argument('-F', '--format', help="Destination subtitle format", default="srt")
     parser.add_argument('-S', '--src-language', help="Language spoken in source file", default="en")
     parser.add_argument('-D', '--dst-language', help="Desired language for the subtitles")
-    #parser.add_argument('-n', '--rename', type=str, help='rename the output file.')
-    #parser.add_argument('-p', '--patience', type=int, help='the patience of retrying to translate. Expect a positive number.  If -1 is assigned, the program will try for infinite times until there is no failures happened in the output.')
-    #parser.add_argument('-V', '--verbose', action="store_true", help='logs the translation process to console.')
-    parser.add_argument('-v', '--version', action='version', version='1.0.6')
+    parser.add_argument('-v', '--version', action='version', version='1.0.7')
     parser.add_argument('-lf', '--list-formats', help="List all available subtitle formats", action='store_true')
     parser.add_argument('-ll', '--list-languages', help="List all available source/destination languages", action='store_true')
 
@@ -791,114 +645,11 @@ def main():
     with open(subtitle_file, 'a') as f:
         f.write("\n")
 
-    #print("Subtitles file created at {}".format(subtitle_file))
-
     if do_translate:
-        entries = entries_generator(subtitle_file)
-        #translated_subtitle_file = args.rename if args.rename else subtitle_file[ :-4] + '_translated.srt'
-        translated_subtitle_file = subtitle_file[ :-4] + '_translated.' + args.format
-        #total_entries = CountEntries(subtitle_file)
+        translated_subtitle_file = subtitle_file[ :-4] + '.translated.' + args.format
 
-
-        '''
-        # ARGUMENT VERBOSE REMOVED
-        if args.verbose:
-            print("Translating from %5s to %5s         : " %(args.src_language, args.dst_language))
-            print('Total Entries', total_entries)
-
-            with open(translated_subtitle_file, 'w', encoding='utf-8') as f:
-                for number_in_sequence, timecode, subtitles, count_failure, count_entries in translate(entries, src=args.src_language, dest=args.dst_language, patience=args.patience, verbose=args.verbose):
-                    f.write(number_in_sequence)
-                    f.write(timecode)
-                    for subtitle in subtitles:
-                        f.write(subtitle)
-                        f.write('\n')
-
-        if not args.verbose:
-            total_entries = CountEntries(subtitle_file)
-
-            # SEQUENTIAL TRANSLATION USING 'def translate()'
-            e=0
-            prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
-            widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
-            pbar = ProgressBar(widgets=widgets, maxval=total_entries).start()
-            with open(translated_subtitle_file, 'w', encoding='utf-8') as f:
-                for number_in_sequence, timecode, subtitles, count_failure, count_entries in translate(entries, src=args.src_language, dest=args.dst_language, patience=args.patience, verbose=args.verbose):
-                    f.write(number_in_sequence)
-                    f.write(timecode)
-                    for subtitle in subtitles:
-                        f.write(subtitle)
-                        f.write('\n')
-                        e += 1
-                        pbar.update(e)
-                pbar.finish()
-
-        # ARGUMENT VERBOSE REMOVED
-        # SEQUENTIAL TRANSLATION USING 'def translate()'
-        e=0
-        prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
-        widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
-        pbar = ProgressBar(widgets=widgets, maxval=total_entries).start()
-        with open(translated_subtitle_file, 'w', encoding='utf-8') as f:
-            for number_in_sequence, timecode, subtitles, count_failure, count_entries in translate(entries, src=args.src_language, dest=args.dst_language, patience=args.patience, verbose=args.verbose):
-                f.write(number_in_sequence)
-                f.write(timecode)
-                for subtitle in subtitles:
-                    f.write(subtitle)
-                    f.write('\n')
-                    e += 1
-                    pbar.update(e)
-            pbar.finish()
-        '''
-
-        '''
-        # ARGUMENT VERBOSE REMOVED
-        # CONCURRENT TRANSLATION USING class SubtitleTranslator
-        prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
-        widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
-        pbar = ProgressBar(widgets=widgets, maxval=total_entries).start()
-        subtitle_translator = SubtitleTranslator(src=args.src_language, dest=args.dst_language, patience=args.patience, verbose=args.verbose)
-        translated_entries = []
-        for i, translated_entry in enumerate(pool.imap(subtitle_translator, entries)):
-            translated_entries.append(translated_entry)
-            pbar.update(i)
-        pbar.finish()
-
-        with open(translated_subtitle_file, 'w', encoding='utf-8') as f:
-            for number_in_sequence, timecode, translated_subtitles in translated_entries:
-                f.write(number_in_sequence)
-                f.write(timecode)
-                for translated_subtitle in translated_subtitles:
-                    f.write(translated_subtitle)
-                    f.write('\n')
-        '''
-
-        '''
-        # ARGUMENT VERBOSE REMOVED
-        # CONCURRENT TRANSLATION USING class SentenceTranslator
-        prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
-        widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
-        pbar = ProgressBar(widgets=widgets, maxval=len(transcripts)).start()
-        sentence_translator = SentenceTranslator(src=args.src_language, dest=args.dst_language)
-        translated_transcripts = []
-        for i, translated_transcript in enumerate(pool.imap(sentence_translator, transcripts)):
-            translated_transcripts.append(translated_transcript)
-            pbar.update(i)
-        pbar.finish()
-
-        timed_translated_subtitles = [(r, t) for r, t in zip(regions, translated_transcripts) if t]
-        formatter = FORMATTERS.get(args.format)
-        formatted_translated_subtitles = formatter(timed_translated_subtitles)
-
-        with open(translated_subtitle_file, 'wb') as f:
-            f.write(formatted_translated_subtitles.encode("utf-8"))
-        with open(translated_subtitle_file, 'a') as f:
-            f.write("\n")
-        '''
-
-        # ARGUMENT VERBOSE REMOVED
-        # AND CONCURRENT TRANSLATION USING class SentenceTranslator(object)
-        # BUT NO NEED TO TRANSLATE ALL transcript IN transcripts (BECAUSE SOME region in regions MAY JUST HAVE EMPTY STRING transcript)
+        # CONCURRENT TRANSLATION USING class SentenceTranslator(object)
+        # NO NEED TO TRANSLATE ALL transcript IN transcripts BECAUSE SOME region IN regions MAY JUST HAVE EMPTY STRING transcript
         # JUST TRANSLATE ALREADY CREATED subtitles ENTRIES FROM timed_subtitles
         created_regions = []
         created_subtitles = []
@@ -932,11 +683,6 @@ def main():
     if do_translate:
         print("Original subtitles file created at      : {}".format(subtitle_file))
         print('Translated subtitles file created at    : {}' .format(translated_subtitle_file))
-        #if args.verbose:
-            #print('Total failure to translate entries      : {0}/{1}'.format(count_failure, count_entries))
-            #failure_ratio = count_failure / count_entries
-            #if failure_ratio > 0:
-                #print('If you expect a lower failure ratio or completed translate, please check out the usage of [-p | --postion] argument.')
     else:
         print("Subtitles file created at      : {}".format(subtitle_file))
 
