@@ -22,8 +22,9 @@ import six
 # ADDITIONAL IMPORT FOR GoogleTranslate()
 import asyncio
 import httpx
-import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
+from glob import glob
+#import warnings
+#warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 GOOGLE_SPEECH_API_KEY = "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"
 GOOGLE_SPEECH_API_URL = "http://www.google.com/speech-api/v2/recognize?client=chromium&lang={lang}&key={key}" # pylint: disable=line-too-long
@@ -553,13 +554,13 @@ def find_speech_regions(filename, frame_width=4096, min_region_size=0.5, max_reg
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('source_path', help="Path to the video or audio file to subtitle", nargs='?')
+    parser.add_argument('source_path', help="Path to the video or audio files to generate subtitle (use wildcard for multiple files)", nargs='*')
     parser.add_argument('-C', '--concurrency', help="Number of concurrent API requests to make", type=int, default=10)
     parser.add_argument('-o', '--output', help="Output path for subtitles (by default, subtitles are saved in the same directory and name as the source path)")
     parser.add_argument('-F', '--format', help="Destination subtitle format", default="srt")
     parser.add_argument('-S', '--src-language', help="Language spoken in source file", default="en")
     parser.add_argument('-D', '--dst-language', help="Desired language for the subtitles")
-    parser.add_argument('-v', '--version', action='version', version='1.0.8')
+    parser.add_argument('-v', '--version', action='version', version='1.1.0')
     parser.add_argument('-lf', '--list-formats', help="List all available subtitle formats", action='store_true')
     parser.add_argument('-ll', '--list-languages', help="List all available source/destination languages", action='store_true')
 
@@ -601,100 +602,106 @@ def main():
         parser.print_help(sys.stderr)
         return 1
 
-    audio_filename, audio_rate = extract_audio(args.source_path)
-    regions = find_speech_regions(audio_filename)
-    pool = multiprocessing.Pool(args.concurrency)
-    converter = FLACConverter(source_path=audio_filename)
-    recognizer = SpeechRecognizer(language=args.src_language, rate=audio_rate, api_key=GOOGLE_SPEECH_API_KEY)
+    file_names = []
+    for arg in args.source_path:
+        file_names += glob(arg)
 
-    transcripts = []
-    if regions:
-        try:
-            widgets = ["Converting speech regions to FLAC files : ", Percentage(), ' ', Bar(), ' ', ETA()]
-            pbar = ProgressBar(widgets=widgets, maxval=len(regions)).start()
-            extracted_regions = []
-            for i, extracted_region in enumerate(pool.imap(converter, regions)):
-                extracted_regions.append(extracted_region)
-                pbar.update(i)
-            pbar.finish()
+    for file in file_names:
+        print("Processing {} :".format(file))
+        audio_filename, audio_rate = extract_audio(file)
+        regions = find_speech_regions(audio_filename)
+        pool = multiprocessing.Pool(args.concurrency)
+        converter = FLACConverter(source_path=audio_filename)
+        recognizer = SpeechRecognizer(language=args.src_language, rate=audio_rate, api_key=GOOGLE_SPEECH_API_KEY)
 
-            widgets = ["Performing speech recognition           : ", Percentage(), ' ', Bar(), ' ', ETA()]
-            pbar = ProgressBar(widgets=widgets, maxval=len(regions)).start()
+        transcripts = []
+        if regions:
+            try:
+                widgets = ["Converting speech regions to FLAC files : ", Percentage(), ' ', Bar(), ' ', ETA()]
+                pbar = ProgressBar(widgets=widgets, maxval=len(regions)).start()
+                extracted_regions = []
+                for i, extracted_region in enumerate(pool.imap(converter, regions)):
+                    extracted_regions.append(extracted_region)
+                    pbar.update(i)
+                pbar.finish()
 
-            for i, transcript in enumerate(pool.imap(recognizer, extracted_regions)):
-                transcripts.append(transcript)
-                pbar.update(i)
-            pbar.finish()
+                widgets = ["Performing speech recognition           : ", Percentage(), ' ', Bar(), ' ', ETA()]
+                pbar = ProgressBar(widgets=widgets, maxval=len(regions)).start()
 
-        except KeyboardInterrupt:
-            pbar.finish()
-            pool.terminate()
-            pool.close()
-            pool.join()
-            print("Cancelling transcription")
-            return 1
+                for i, transcript in enumerate(pool.imap(recognizer, extracted_regions)):
+                    transcripts.append(transcript)
+                    pbar.update(i)
+                pbar.finish()
 
-    timed_subtitles = [(r, t) for r, t in zip(regions, transcripts) if t]
-    formatter = FORMATTERS.get(args.format)
-    formatted_subtitles = formatter(timed_subtitles)
+            except KeyboardInterrupt:
+                pbar.finish()
+                pool.terminate()
+                pool.close()
+                pool.join()
+                print("Cancelling transcription")
+                return 1
 
-    subtitle_file = args.output
-
-    if not subtitle_file:
-        base, ext = os.path.splitext(args.source_path)
-        subtitle_file = "{base}.{format}".format(base=base, format=args.format)
-
-    with open(subtitle_file, 'wb') as f:
-        f.write(formatted_subtitles.encode("utf-8"))
-
-    with open(subtitle_file, 'a') as f:
-        f.write("\n")
-
-    if do_translate:
-        translated_subtitle_file = subtitle_file[ :-4] + '.translated.' + args.format
-
-        # CONCURRENT TRANSLATION USING class SentenceTranslator(object)
-        # NO NEED TO TRANSLATE ALL transcript IN transcripts BECAUSE SOME region IN regions MAY JUST HAVE EMPTY STRING transcript
-        # JUST TRANSLATE ALREADY CREATED subtitles ENTRIES FROM timed_subtitles
-        created_regions = []
-        created_subtitles = []
-        for entry in timed_subtitles:
-            created_regions.append(entry[0])
-            created_subtitles.append(entry[1])
-
-        prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
-        widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
-        pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
-        transcript_translator = SentenceTranslator(src=args.src_language, dest=args.dst_language)
-        translated_subtitles = []
-        for i, translated_subtitle in enumerate(pool.imap(transcript_translator, created_subtitles)):
-            translated_subtitles.append(translated_subtitle)
-            pbar.update(i)
-        pbar.finish()
-
-        timed_translated_subtitles = [(r, t) for r, t in zip(created_regions, translated_subtitles) if t]
+        timed_subtitles = [(r, t) for r, t in zip(regions, transcripts) if t]
         formatter = FORMATTERS.get(args.format)
-        formatted_translated_subtitles = formatter(timed_translated_subtitles)
+        formatted_subtitles = formatter(timed_subtitles)
 
-        with open(translated_subtitle_file, 'wb') as tf:
-            tf.write(formatted_translated_subtitles.encode("utf-8"))
+        subtitle_file = args.output
 
-        with open(translated_subtitle_file, 'a') as tf:
-            tf.write("\n")
+        if not subtitle_file:
+            base, ext = os.path.splitext(file)
+            subtitle_file = "{base}.{format}".format(base=base, format=args.format)
 
-    os.remove(audio_filename)
+        with open(subtitle_file, 'wb') as f:
+            f.write(formatted_subtitles.encode("utf-8"))
 
-    print('Done.')
-    if do_translate:
-        print("Original subtitles file created at      : {}".format(subtitle_file))
-        print('Translated subtitles file created at    : {}' .format(translated_subtitle_file))
-    else:
-        print("Subtitles file created at      : {}".format(subtitle_file))
+        with open(subtitle_file, 'a') as f:
+            f.write("\n")
 
-    pool.close()
-    pool.join()
+        if do_translate:
+            translated_subtitle_file = subtitle_file[ :-4] + '.translated.' + args.format
 
-    return 0
+            # CONCURRENT TRANSLATION USING class SentenceTranslator(object)
+            # NO NEED TO TRANSLATE ALL transcript IN transcripts BECAUSE SOME region IN regions MAY JUST HAVE EMPTY STRING transcript
+            # JUST TRANSLATE ALREADY CREATED subtitles ENTRIES FROM timed_subtitles
+            created_regions = []
+            created_subtitles = []
+            for entry in timed_subtitles:
+                created_regions.append(entry[0])
+                created_subtitles.append(entry[1])
+
+            prompt = "Translating from %5s to %5s         : " %(args.src_language, args.dst_language)
+            widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
+            pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
+            transcript_translator = SentenceTranslator(src=args.src_language, dest=args.dst_language)
+            translated_subtitles = []
+            for i, translated_subtitle in enumerate(pool.imap(transcript_translator, created_subtitles)):
+                translated_subtitles.append(translated_subtitle)
+                pbar.update(i)
+            pbar.finish()
+
+            timed_translated_subtitles = [(r, t) for r, t in zip(created_regions, translated_subtitles) if t]
+            formatter = FORMATTERS.get(args.format)
+            formatted_translated_subtitles = formatter(timed_translated_subtitles)
+
+            with open(translated_subtitle_file, 'wb') as tf:
+                tf.write(formatted_translated_subtitles.encode("utf-8"))
+
+            with open(translated_subtitle_file, 'a') as tf:
+                tf.write("\n")
+
+        os.remove(audio_filename)
+
+        print('Done.')
+        if do_translate:
+            print("Original subtitles file created at      : {}".format(subtitle_file))
+            print('Translated subtitles file created at    : {}' .format(translated_subtitle_file))
+        else:
+            print("Subtitles file created at      : {}".format(subtitle_file))
+
+        pool.close()
+        pool.join()
+
+        #return 0
 
 if __name__ == '__main__':
     multiprocessing.freeze_support()
