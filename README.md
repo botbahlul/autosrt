@@ -81,7 +81,7 @@ autosrt -S zh-CN "Episode 1.mp4"
 autosrt [-h] [-C CONCURRENCY] [-o OUTPUT] [-F FORMAT] [-S SRC_LANGUAGE] [-D DST_LANGUAGE] [-v] [-lf] [-ll] [source_path]
 
 positional arguments:
-  source_path           Path to the video or audio file to subtitle
+  source_path           Path to the video or audio files to generate subtitle (use wildcard for multiple files)
 
 options:
   -h, --help            show this help message and exit
