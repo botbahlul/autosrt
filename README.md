@@ -65,6 +65,11 @@ autosrt --list-languages
 autosrt -S zh-CN -D en "Episode 1.mp4"
 ```
 
+For multiple video/audio files (starts from version 1.1.0), you can use wildcard
+```
+autosrt -S zh-CN -D en "C:\Movies\*.mp4"
+```
+
 If you don't need translations just type :
 ```
 autosrt -S zh-CN "Episode 1.mp4"
