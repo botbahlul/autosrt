@@ -20,11 +20,10 @@ from progressbar import ProgressBar, Percentage, Bar, ETA
 import pysrt
 import six
 # ADDITIONAL IMPORT FOR GoogleTranslate()
-import asyncio
 import httpx
 from glob import glob
-#import warnings
-#warnings.filterwarnings("ignore", category=DeprecationWarning)
+# ADDITIONAL IMPORT FOR FfmpegProgress
+from ffmpeg_progress_yield import FfmpegProgress
 
 GOOGLE_SPEECH_API_KEY = "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"
 GOOGLE_SPEECH_API_URL = "http://www.google.com/speech-api/v2/recognize?client=chromium&lang={lang}&key={key}" # pylint: disable=line-too-long
@@ -512,9 +511,44 @@ def extract_audio(filename, channels=1, rate=48000):
     if not ffmpeg_check():
         print("ffmpeg: Executable not found on machine.")
         raise Exception("Dependency not found: ffmpeg")
-    command = ["ffmpeg", "-y", "-i", filename, "-ac", str(channels), "-ar", str(rate), "-loglevel", "error", temp.name]
+    command = ["ffmpeg", "-y", "-i", filename, "-ac", str(channels), "-ar", str(rate), "-loglevel", "error", "-hide_banner", temp.name]
+
+    ff = FfmpegProgress(command)
+    widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
+    pbar = ProgressBar(widgets=widgets, maxval=100).start()
+    for progress in ff.run_command_with_progress():
+        pbar.update(progress)
+    pbar.finish()
+
     subprocess.check_output(command, stdin=open(os.devnull))
     return temp.name, rate
+
+
+def executeShellCommand(cmd):
+    p = Popen(cmd , shell=True, stdout=PIPE, stderr=PIPE)
+    out, err = p.communicate()
+    return out.rstrip(), err.rstrip(), p.returncode
+
+def getFFmpegFileDurationInSeconds(filename):
+    cmd = "ffmpeg -i "+ filename +" 2>&1 | grep 'Duration' | cut -d ' ' -f 4 | sed s/,//"
+    time = executeShellCommand(cmd)[0]
+    h = int(time[0:2])
+    m = int(time[3:5])
+    s = int(time[6:8])
+    ms = int(time[9:11])
+    ts = (h * 60 * 60) + (m * 60) + s + (ms/60)
+    return ts
+
+def estimateFFmpegMp4toMp3NewFileSizeInBytes(duration, kbps):
+    """
+    * Very close but not exact.
+    duration: current file duration in seconds
+    kbps: quality in kbps, ex: 320000
+    Ex:
+        estim.:    12,200,000
+        real:      12,215,118
+    """
+    return ((kbps * duration) / 8)
 
 
 def find_speech_regions(filename, frame_width=4096, min_region_size=0.5, max_region_size=6):
@@ -560,7 +594,7 @@ def main():
     parser.add_argument('-F', '--format', help="Destination subtitle format", default="srt")
     parser.add_argument('-S', '--src-language', help="Language spoken in source file", default="en")
     parser.add_argument('-D', '--dst-language', help="Desired language for the subtitles")
-    parser.add_argument('-v', '--version', action='version', version='1.1.0')
+    parser.add_argument('-v', '--version', action='version', version='1.1.1')
     parser.add_argument('-lf', '--list-formats', help="List all available subtitle formats", action='store_true')
     parser.add_argument('-ll', '--list-languages', help="List all available source/destination languages", action='store_true')
 
