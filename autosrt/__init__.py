@@ -555,8 +555,11 @@ def find_speech_regions(filename, frame_width=4096, min_region_size=0.5, max_reg
 #def find_speech_regions(filename, frame_width=4096, min_region_size=0.3, max_region_size=8):
     reader = wave.open(filename)
     sample_width = reader.getsampwidth()
+    #print("sample_width = {}".format(sample_width))
     rate = reader.getframerate()
+    #print("rate = {}".format(rate))
     n_channels = reader.getnchannels()
+    #print("n_channels = {}".format(n_channels))
 
     total_duration = reader.getnframes() / rate
     chunk_duration = float(frame_width) / rate
@@ -594,7 +597,7 @@ def main():
     parser.add_argument('-F', '--format', help="Destination subtitle format", default="srt")
     parser.add_argument('-S', '--src-language', help="Language spoken in source file", default="en")
     parser.add_argument('-D', '--dst-language', help="Desired language for the subtitles")
-    parser.add_argument('-v', '--version', action='version', version='1.1.1')
+    parser.add_argument('-v', '--version', action='version', version='1.1.2')
     parser.add_argument('-lf', '--list-formats', help="List all available subtitle formats", action='store_true')
     parser.add_argument('-ll', '--list-languages', help="List all available source/destination languages", action='store_true')
 
@@ -680,8 +683,13 @@ def main():
         formatted_subtitles = formatter(timed_subtitles)
 
         subtitle_file = args.output
-
-        if not subtitle_file:
+        if subtitle_file:
+            subtitle_file_base, subtitle_file_ext = os.path.splitext(args.output)
+            if not subtitle_file_ext:
+                subtitle_file = "{base}.{format}".format(base=subtitle_file_base, format=args.format)
+            else:
+                subtitle_file = args.output
+        else:
             base, ext = os.path.splitext(file)
             subtitle_file = "{base}.{format}".format(base=base, format=args.format)
 
