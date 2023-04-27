@@ -20,7 +20,6 @@ from progressbar import ProgressBar, Percentage, Bar, ETA
 import pysrt
 import six
 # ADDITIONAL IMPORT FOR GoogleTranslate()
-import httpx
 from glob import glob
 # ADDITIONAL IMPORT FOR FfmpegProgress
 from ffmpeg_progress_yield import FfmpegProgress
@@ -422,7 +421,7 @@ class SpeechRecognizer(object):
         except KeyboardInterrupt:
             return
 
-
+'''
 def GoogleTranslate(text, src, dst):
     url = 'https://translate.googleapis.com/translate_a/'
     params = 'single?client=gtx&sl='+src+'&tl='+dst+'&dt=t&q='+text;
@@ -441,6 +440,21 @@ def GoogleTranslate(text, src, dst):
                 translation = translation + response_json[i][0]
             return translation
         return
+'''
+
+def GoogleTranslate(text, src, dst):
+    url = 'https://translate.googleapis.com/translate_a/'
+    params = 'single?client=gtx&sl='+src+'&tl='+dst+'&dt=t&q='+text;
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Referer': 'https://translate.google.com',}
+    response = requests.get(url+params, headers=headers)
+    if response.status_code == 200:
+        response_json = response.json()[0]
+        length = len(response_json)
+        translation = ""
+        for i in range(length):
+            translation = translation + response_json[i][0]
+        return translation
+    return
 
 
 class SentenceTranslator(object):
@@ -597,7 +611,7 @@ def main():
     parser.add_argument('-F', '--format', help="Destination subtitle format", default="srt")
     parser.add_argument('-S', '--src-language', help="Language spoken in source file", default="en")
     parser.add_argument('-D', '--dst-language', help="Desired language for the subtitles")
-    parser.add_argument('-v', '--version', action='version', version='1.1.2')
+    parser.add_argument('-v', '--version', action='version', version='1.1.3')
     parser.add_argument('-lf', '--list-formats', help="List all available subtitle formats", action='store_true')
     parser.add_argument('-ll', '--list-languages', help="List all available source/destination languages", action='store_true')
 
