@@ -19,9 +19,8 @@ except ImportError:
 from progressbar import ProgressBar, Percentage, Bar, ETA
 import pysrt
 import six
-# ADDITIONAL IMPORT FOR GoogleTranslate()
+# ADDITIONAL IMPORT
 from glob import glob
-# ADDITIONAL IMPORT FOR FfmpegProgress
 from ffmpeg_progress_yield import FfmpegProgress
 
 GOOGLE_SPEECH_API_KEY = "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"
