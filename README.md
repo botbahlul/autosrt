@@ -14,6 +14,11 @@ from autosrt import Language, WavConverter,  SpeechRegionFinder, FLACConverter, 
 
 You can learn how to use them by playing around with those scripts inside test folder. Check every def function on each class to know how to use them.
 
+If your OS is Linux don't forget to install python magic library by typing this at console terminal :
+```
+sudo apt install -y libmagic1
+```
+
 ### Installation
 If you don't have python on your Windows system you can get compiled version from this git release assets
 https://github.com/botbahlul/autosrt/releases
@@ -25,8 +30,8 @@ You can get latest version of ffmpeg from https://www.ffmpeg.org/
 In Linux you have to install this script with python (version minimal 3.8 ) and install ffmpeg with your linux package manager for example in debian based linux distribution you can type :
 
 ```
-apt update
-apt install -y ffmpeg
+sudo apt update
+sudo apt install -y ffmpeg
 ```
 
 To install this autosrt, just type :
