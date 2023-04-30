@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from __future__ import unicode_literals
+import sys
 
 try:
     from setuptools import setup
@@ -16,9 +17,21 @@ long_description = (
     'subtitles in SRT, VTT, JSON, and RAW format.'
 )
 
+install_requires=[
+        "requests>=2.3.0",
+        "pysrt>=1.0.1",
+        "progressbar2>=3.34.3",
+        "six>=1.11.0",
+        "ffmpeg_progress_yield>=0.7.2",
+        "python_magic>=0.4.27",
+]
+
+if sys.platform == "win32":
+    install_requires.append("python_magic_bin>=0.4.14")
+
 setup(
     name="autosrt",
-    version="1.2.0",
+    version="1.2.1",
     description="a utility for automatic speech recognition and subtitle generation",
     long_description = long_description,
     author="Bot Bahlul",
@@ -30,14 +43,6 @@ setup(
             "autosrt = autosrt:main",
         ],
     },
-    install_requires=[
-        "requests>=2.3.0",
-        "pysrt>=1.0.1",
-        "progressbar2>=3.34.3",
-        "six>=1.11.0",
-        "ffmpeg_progress_yield>=0.7.2",
-        "python_magic>=0.4.27",
-        "python_magic_bin>=0.4.14",
-    ],
+    install_requires=install_requires,
     license=open("LICENSE").read()
 )
