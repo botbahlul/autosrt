@@ -7,24 +7,24 @@ except ImportError:
     from distutils.core import setup
 
 long_description = (
-    'autosrt is a utility for automatic speech recognition and subtitle generation. '
+    'autosrt is a utility for automatic speech recognition and subtitle generation.'
     'It takes a video or an audio file as input, performs voice activity detection '
     'to find speech regions,  makes parallel requests to Google Web Speech API  to '
     'generate transcriptions for those regions,  (optionally) translates them to a '
-    'different language, and finally saves the resulting subtitles to disk. '
-    'It supports a variety of input and output languages  and can currently produce '
+    'different language, and finally saves the resulting subtitles file to disk.   '
+    'It supports a variety of input and output languages and can currently produce '
     'subtitles in SRT, VTT, JSON, and RAW format.'
 )
 
 setup(
     name="autosrt",
-    version="1.1.3",
-    description="autosrt is a utility for automatic speech recognition and subtitle generation. It takes a video or an audio file as input, performs voice activity detection to find speech regions,  makes parallel requests to Google Web Speech API  to generate transcriptions for those regions,  (optionally) translates them to a different language, and finally saves the resulting subtitles to disk. It supports a variety of input and output languages  and can currently produce subtitles in SRT, VTT, JSON, and RAW format.",
+    version="1.2.0",
+    description="a utility for automatic speech recognition and subtitle generation",
     long_description = long_description,
     author="Bot Bahlul",
     author_email="bot.bahlul@gmail.com",
     url="https://github.com/botbahlul/autosrt",
-    packages=[str("autosrt")],
+    packages=["autosrt"],
     entry_points={
         "console_scripts": [
             "autosrt = autosrt:main",
@@ -36,6 +36,8 @@ setup(
         "progressbar2>=3.34.3",
         "six>=1.11.0",
         "ffmpeg_progress_yield>=0.7.2",
+        "python_magic>=0.4.27",
+        "python_magic_bin>=0.4.14",
     ],
     license=open("LICENSE").read()
 )
