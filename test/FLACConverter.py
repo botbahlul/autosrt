@@ -18,7 +18,9 @@ class FLACConverter(object):
             temp = tempfile.NamedTemporaryFile(suffix='.flac', delete=False)
             command = ["ffmpeg","-ss", str(start), "-t", str(end - start), "-y", "-i", self.wav_filepath, "-loglevel", "error", temp.name]
             subprocess.check_output(command, stdin=open(os.devnull))
-            return temp.read()
+            content = temp.read()
+            temp.close()
+            return content
 
         except KeyboardInterrupt:
             return
