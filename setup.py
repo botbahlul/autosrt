@@ -23,7 +23,7 @@ install_requires=[
         "progressbar2>=3.34.3",
         "six>=1.11.0",
         "ffmpeg_progress_yield>=0.7.2",
-        "python_magic_bin>=0.4.14",
+        "python-magic>=0.4.27",
 ]
 
 if sys.platform == "win32":
