@@ -34,7 +34,7 @@ To install this autosrt, just type :
 pip install autosrt
 ```
 
-You can try to compile that autosrt.py script in win/linux folder into a single executable file with pyinstaller by typing this commands :
+You can try to compile that autosrt.py script in win/linux folder into a single executable file with pyinstaller by typing these :
 ```
 pip install pyinstaller
 pyinstaller --onefile autosrt.py
