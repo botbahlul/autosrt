@@ -6,7 +6,7 @@ autosrt is a simple command line tool made with python to auto generate subtitle
 This script is a modified version of original autosub made by Anastasis Germanidis at https://github.com/agermanidis/autosub
 
 ### UPDATE NOTES
-Since version 1.2.3 I tried to make some class modules, so in case you want to use them in your own project you can just import them. They are Language, WavConverter, SpeechRegionFinder, FLACConverter, SpeechRecognizer, SentenceTranslator, SubtitleFormatter, and SubtitleWriter. You can import them like this :
+Since version 1.2.4 I tried to make some class modules, so in case you want to use them in your own project you can just import them. They are Language, WavConverter, SpeechRegionFinder, FLACConverter, SpeechRecognizer, SentenceTranslator, SubtitleFormatter, and SubtitleWriter. You can import them like this :
 ```
 from autosrt import Language, WavConverter, SpeechRegionFinder, FLACConverter, SpeechRecognizer, SentenceTranslator, \
     SubtitleFormatter,  SubtitleWriter
@@ -57,10 +57,10 @@ python setup.py build
 python setup.py bdist_wheel
 ```
 
-Then check the name of the whl file created in dist folder. In case the filename is autosrt-1.2.3-py2.py3-none-any.whl then you can install that whl file with pip :
+Then check the name of the whl file created in dist folder. In case the filename is autosrt-1.2.4-py2.py3-none-any.whl then you can install that whl file with pip :
 ```
 cd dist
-pip install autosrt-1.2.3-py2.py3-none-any.whl
+pip install autosrt-1.2.4-py2.py3-none-any.whl
 ```
 
 You can also install this script (or any pip package) in ANDROID DEVICES via PYTHON package in TERMUX APP
