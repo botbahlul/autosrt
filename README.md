@@ -1,7 +1,7 @@
 # autosrt <a href="https://pypi.python.org/pypi/autosrt"><img src="https://img.shields.io/pypi/v/autosrt.svg"></img></a>
   
-### Auto generate subtitles for any video
-autosrt is a simple command line tool made with python to auto generate subtitle/closed caption for any video or audio file and translate it automaticly for free using googletrans-4.0.0rc1 https://pypi.org/project/googletrans/4.0.0rc1/
+### Auto generate subtitle files for any video / audio files
+autosrt is a simple command line tool made with python to auto generate subtitle/closed caption for any video or audio files and translate it automatically for free using a simple unofficial online Google Translate API.
 
 This script is a modified version of original autosub made by Anastasis Germanidis at https://github.com/agermanidis/autosub
 
@@ -12,9 +12,9 @@ from autosrt import Language, WavConverter,  SpeechRegionFinder, FLACConverter, 
     SubtitleFormatter,  SubtitleWriter
 ```
 
-You can learn how to use them by playing around with those scripts inside test folder. Check every def function on each class to know how to use them.
+You can learn how to use them by playing around with those scripts inside test folder. Check every def function on each class to know how to use them. They are not to difficult to understand.
 
-If your OS is Linux don't forget to install python magic library by typing this at console terminal :
+If you are on Linux OS don't forget to install libmagic C library to make python_magic modules work properly by typing this at console terminal :
 ```
 sudo apt install -y libmagic1
 ```
