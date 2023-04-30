@@ -50,6 +50,9 @@ class SpeechRegionFinder:
 
 
 region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6)
+
+# RETURNED FILE CREATED BY WavConverter.py
 wav_filepath = '/tmp/tmpscxc5z6o.wav'
+
 regions = region_finder(wav_filepath)
 print(regions)
