@@ -31,7 +31,7 @@ if sys.platform == "win32":
 
 setup(
     name="autosrt",
-    version="1.2.3",
+    version="1.2.4",
     description="a utility for automatic speech recognition and subtitle generation",
     long_description = long_description,
     author="Bot Bahlul",
