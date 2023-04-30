@@ -12,8 +12,8 @@ def show_progress(percentage):
 def main():
     global pbar
 
-    media_filepath = "harry.mp4"
-    src = "en"
+    media_filepath = "balas budi.mp4"
+    src = "zh-CN"
     dst = "id"
     subtitle_format = "srt"
 

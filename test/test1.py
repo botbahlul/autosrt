@@ -13,7 +13,7 @@ def show_progress(progress):
 def main():
     global pbar
 
-    media_filepath = "harry.mp4"
+    media_filepath = "balas budi.mp4"
 
     language = Language()
 
@@ -32,23 +32,23 @@ def main():
 
 
     # ALTERNATIVE 1
-    src = "en"
+    src = "zh-CN"
     src_language_name = language.get_name(src)
     print("src_language_name = {}".format(src_language_name))
 
     # ALTERNATIVE 2
-    #src = "en"
+    #src = "zh-CN"
     #src_language_name = language.name_of_code[src]
     #print("src_language_name = {}".format(src_language_name))
 
 
     # ALTERNATIVE 1
-    src_language_name = "English"
+    src_language_name = "Chinese (Simplified)"
     src_language_code = language.get_code(src_language_name)
     print("src_language_code = {}".format(src_language_code))
 
     # ALTERNATIVE 2
-    #src_language_name = "English"
+    #src_language_name = "Chinese (Simplified)"
     #src_language_code = language.code_of_name[src_language_name]
     #print("src_language_code = {}".format(src_language_code))
 
