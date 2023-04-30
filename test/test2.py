@@ -1,0 +1,101 @@
+import sys
+import multiprocessing
+from progressbar import ProgressBar, Percentage, Bar, ETA
+
+from autosrt import Language, WavConverter,  SpeechRegionFinder, FLACConverter, SpeechRecognizer, SentenceTranslator, \
+    SubtitleFormatter,  SubtitleWriter
+
+def show_progress(percentage):
+    global pbar
+    pbar.update(percentage)
+
+def main():
+    global pbar
+
+    media_filepath = "harry.mp4"
+    src = "en"
+    dst = "id"
+    subtitle_format = "srt"
+
+    widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
+    pbar = ProgressBar(widgets=widgets, maxval=100).start()
+    wav_converter = WavConverter()
+    audio_filepath, audio_rate = wav_converter(media_filepath, progress_callback=show_progress)
+    pbar.finish()
+
+    speech_region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6)
+    regions = speech_region_finder(audio_filepath)
+
+    converter = FLACConverter(wav_filepath=audio_filepath)
+    recognizer = SpeechRecognizer(language=src, rate=audio_rate, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw")
+
+    pool = multiprocessing.Pool(10)
+
+    if regions:
+        try:
+            widgets = ["Converting speech regions to FLAC files : ", Percentage(), ' ', Bar(), ' ', ETA()]
+            pbar = ProgressBar(widgets=widgets, maxval=len(regions)).start()
+            extracted_regions = []
+            for i, extracted_region in enumerate(pool.imap(converter, regions)):
+                extracted_regions.append(extracted_region)
+                pbar.update(i)
+            pbar.finish()
+
+            widgets = ["Performing speech recognition           : ", Percentage(), ' ', Bar(), ' ', ETA()]
+            pbar = ProgressBar(widgets=widgets, maxval=len(regions)).start()
+            transcripts = []
+            for i, transcript in enumerate(pool.imap(recognizer, extracted_regions)):
+                transcripts.append(transcript)
+                pbar.update(i)
+            pbar.finish()
+
+            subtitle_filepath = "harry.srt"
+            subtitle_format = "srt"
+
+            writer = SubtitleWriter(regions, transcripts, subtitle_format)
+            writer.write(subtitle_filepath)
+            timed_subtitles = writer.timed_subtitles
+
+            created_regions = []
+            created_subtitles = []
+            for entry in timed_subtitles:
+                created_regions.append(entry[0])
+                created_subtitles.append(entry[1])
+
+            prompt = "Translating from %8s to %8s   : " %(src, dst)
+            widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
+            pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
+            transcript_translator = SentenceTranslator(src=src, dst=dst)
+            translated_subtitles = []
+            for i, translated_subtitle in enumerate(pool.imap(transcript_translator, created_subtitles)):
+                translated_subtitles.append(translated_subtitle)
+                pbar.update(i)
+            pbar.finish()
+
+            translated_subtitle_filepath = subtitle_filepath[ :-4] + '.translated.' + subtitle_format
+            translation_writer = SubtitleWriter(created_regions, translated_subtitles, subtitle_format)
+            translation_writer.write(translated_subtitle_filepath)
+
+            print('Done.')
+            print("Original subtitles file created at      : {}".format(subtitle_filepath))
+            print('Translated subtitles file created at    : {}' .format(translated_subtitle_filepath))
+
+        except KeyboardInterrupt:
+            pbar.finish()
+            pool.terminate()
+            pool.close()
+            pool.join()
+            print("Cancelling transcription")
+            sys.exit(1)
+
+        except Exception as e:
+            pbar.finish()
+            pool.terminate()
+            pool.close()
+            pool.join()
+            print(e)
+            sys.exit(1)
+
+if __name__ == '__main__':
+    multiprocessing.freeze_support()
+    sys.exit(main())
