@@ -56,7 +56,7 @@ for entry in timed_subtitles:
     created_subtitles.append(entry[1])
 
 pool = multiprocessing.Pool(10)
-prompt = "Translating from %5s to %5s         : " %(src, dst)
+prompt = "Translating from %8s to %8s         : " %(src, dst)
 widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
 pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
 transcript_translator = SentenceTranslator(src=src, dst=dst)
