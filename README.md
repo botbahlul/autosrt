@@ -52,14 +52,15 @@ I was succesfuly compiled it in Windows 10 with pyinstaller-5.1 and Pyhton-3.10.
 Another alternative way to install this script with python is by cloning this git (or downloading this git as zip then extract it into a folder), and then just type :
 
 ```
+pip install wheel
 python setup.py build
-python setup.py python setup.py bdist_wheel
+python setup.py bdist_wheel
 ```
 
-Then check the name of the whl file in dist folder. In case the filename is autosrt-1.2.1-py2.py3-none-any.whl then you can install that whl file with pip :
+Then check the name of the whl file created in dist folder. In case the filename is autosrt-1.2.2-py2.py3-none-any.whl then you can install that whl file with pip :
 ```
 cd dist
-pip install autosrt-1.2.1-py2.py3-none-any.whl
+pip install autosrt-1.2.2-py2.py3-none-any.whl
 ```
 
 You can also install this script (or any pip package) in ANDROID DEVICES via PYTHON package in TERMUX APP
