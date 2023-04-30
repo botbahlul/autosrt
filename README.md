@@ -57,10 +57,10 @@ python setup.py build
 python setup.py bdist_wheel
 ```
 
-Then check the name of the whl file created in dist folder. In case the filename is autosrt-1.2.2-py2.py3-none-any.whl then you can install that whl file with pip :
+Then check the name of the whl file created in dist folder. In case the filename is autosrt-1.2.3-py2.py3-none-any.whl then you can install that whl file with pip :
 ```
 cd dist
-pip install autosrt-1.2.2-py2.py3-none-any.whl
+pip install autosrt-1.2.3-py2.py3-none-any.whl
 ```
 
 You can also install this script (or any pip package) in ANDROID DEVICES via PYTHON package in TERMUX APP
