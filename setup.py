@@ -28,8 +28,6 @@ install_requires=[
 
 if sys.platform == "win32":
     install_requires.append("python_magic_bin>=0.4.14")
-#else:
-#    install_requires.append("python_magic>=0.4.27")
 
 setup(
     name="autosrt",
