@@ -744,7 +744,7 @@ class SentenceTranslator(object):
             translated_sentence = self.GoogleTranslate(sentence, src=self.src, dst=self.dst)
             fail_to_translate = translated_sentence[-1] == '\n'
             while fail_to_translate and patience:
-                translated_sentence = translator.translate(translated_sentence, src=self.src, dst=self.dst).text
+                translated_sentence = self.GoogleTranslate(translated_sentence, src=self.src, dst=self.dst).text
                 if translated_sentence[-1] == '\n':
                     if patience == -1:
                         continue
