@@ -572,11 +572,13 @@ class WavConverter:
 
 # DEFINE progress_callback FUNCTION TO SHOW ffmpeg PROGRESS
 # IF WE'RE IN pysimplegui ENVIRONMENT WE CAN DO :
-# global main_window
-# main_window.write_event_value('-UPDATE-PROGRESS-', percentage) AND HANDLE THAT EVENT IN pysimplegui MAIN LOOP
-def show_progress(percentage):
-    global pbar
-    pbar.update(percentage)
+#def show_progress(percentage):
+    #global main_window
+    #main_window.write_event_value('-UPDATE-PROGRESS-', percentage) AND HANDLE THAT EVENT IN pysimplegui MAIN LOOP
+# IF WE'RE IN console ENVIRONMENT WE CAN DO :
+#def show_progress(percentage):
+    #global pbar
+    #pbar.update(percentage)
 
 
 class SpeechRegionFinder:
