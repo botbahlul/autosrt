@@ -107,11 +107,12 @@ class FLACConverter(object):
 
 
 class SpeechRecognizer(object):
-    def __init__(self, language="en", rate=44100, retries=3, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"):
+    def __init__(self, language="en", rate=44100, retries=3, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", timeout=30):
         self.language = language
         self.rate = rate
         self.api_key = api_key
         self.retries = retries
+        self.timeout = timeout
 
     def __call__(self, data):
         try:
