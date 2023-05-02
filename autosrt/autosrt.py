@@ -670,22 +670,26 @@ class FLACConverter(object):
 
 
 class SpeechRecognizer(object):
-    def __init__(self, language="en", rate=44100, retries=3, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"):
+    def __init__(self, language="en", rate=44100, retries=3, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", timeout=30):
         self.language = language
         self.rate = rate
         self.api_key = api_key
         self.retries = retries
+        self.timeout = timeout
 
     def __call__(self, data):
         try:
             for i in range(self.retries):
                 url = "http://www.google.com/speech-api/v2/recognize?client=chromium&lang={lang}&key={key}".format(lang=self.language, key=self.api_key)
-                headers = {"Content-Type": "audio/x-flac; rate=%d" % self.rate}
+                headers = {"Content-Type": "audio/x-flac rate=%d" % self.rate}
 
                 try:
-                    resp = requests.post(url, data=data, headers=headers)
+                    resp = requests.post(url, data=data, headers=headers, timeout=self.timeout)
                 except requests.exceptions.ConnectionError:
-                    continue
+                    try:
+                        resp = httpx.post(url, data=data, headers=headers, timeout=self.timeout)
+                    except httpx.exceptions.NetworkError:
+                        continue
 
                 for line in resp.content.decode('utf-8').split("\n"):
                     try:
@@ -697,7 +701,6 @@ class SpeechRecognizer(object):
                         continue
 
         except KeyboardInterrupt:
-            print("Cancelling transcription")
             return
 
         except Exception as e:
@@ -707,12 +710,13 @@ class SpeechRecognizer(object):
 
 class SentenceTranslator(object):
     @staticmethod
-    def GoogleTranslate(text, src, dst):
+    def GoogleTranslate(text, src, dst, timeout=30):
         url = 'https://translate.googleapis.com/translate_a/'
         params = 'single?client=gtx&sl='+src+'&tl='+dst+'&dt=t&q='+text;
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Referer': 'https://translate.google.com',}
+
         try:
-            response = requests.get(url+params, headers=headers)
+            response = requests.get(url+params, headers=headers, timeout=timeout)
             if response.status_code == 200:
                 response_json = response.json()[0]
                 length = len(response_json)
@@ -722,6 +726,18 @@ class SentenceTranslator(object):
                 return translation
             return
 
+        except requests.exceptions.ConnectionError:
+            with httpx.Client() as client:
+                response = client.get(url+params, headers=headers, timeout=timeout)
+                if response.status_code == 200:
+                    response_json = response.json()[0]
+                    length = len(response_json)
+                    translation = ""
+                    for i in range(length):
+                        translation = translation + response_json[i][0]
+                    return translation
+                return
+
         except KeyboardInterrupt:
             print("Cancelling transcription")
             return
@@ -730,10 +746,11 @@ class SentenceTranslator(object):
             print(e)
             return
 
-    def __init__(self, src, dst, patience=-1):
+    def __init__(self, src, dst, patience=-1, timeout=30):
         self.src = src
         self.dst = dst
         self.patience = patience
+        self.timeout = timeout
 
     def __call__(self, sentence):
         try:
@@ -741,10 +758,10 @@ class SentenceTranslator(object):
             # handle the special case: empty string.
             if not sentence:
                 return None
-            translated_sentence = self.GoogleTranslate(sentence, src=self.src, dst=self.dst)
+            translated_sentence = self.GoogleTranslate(sentence, src=self.src, dst=self.dst, timeout=self.timeout)
             fail_to_translate = translated_sentence[-1] == '\n'
             while fail_to_translate and patience:
-                translated_sentence = self.GoogleTranslate(translated_sentence, src=self.src, dst=self.dst).text
+                translated_sentence = self.GoogleTranslate(translated_sentence, src=self.src, dst=self.dst, timeout=self.timeout).text
                 if translated_sentence[-1] == '\n':
                     if patience == -1:
                         continue
