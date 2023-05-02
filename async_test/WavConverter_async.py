@@ -96,10 +96,12 @@ async def main():
 
     wav_converter = WavConverter()
     wav_converter_partial = partial(wav_converter.convert_async, wav_converter=wav_converter, progress_callback=show_progress)
-    audio_filepath, audio_rate = await asyncio.create_task(wav_converter_partial(media_filepath, progress_callback=show_progress))
+    wav_filepath, audio_rate = await asyncio.create_task(wav_converter_partial(media_filepath, progress_callback=show_progress))
 
     pbar.finish()
-    print(audio_filepath, audio_rate)
+
+    print("wav_filepath = {}".format(wav_filepath))
+    print("audio_rate = {}".format(audio_rate))
 
 if __name__ == '__main__':
     asyncio.run(main())

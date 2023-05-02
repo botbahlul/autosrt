@@ -12,30 +12,11 @@ from progressbar import ProgressBar, Percentage, Bar, ETA
 import multiprocessing
 
 class SentenceTranslator:
-    @staticmethod
-    async def GoogleTranslate(text, src, dst):
-        url = 'https://translate.googleapis.com/translate_a/'
-        params = 'single?client=gtx&sl='+src+'&tl='+dst+'&dt=t&q='+text;
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Referer': 'https://translate.google.com',}
-        try:
-            response = requests.get(url+params, headers=headers)
-            if response.status_code == 200:
-                response_json = response.json()[0]
-                length = len(response_json)
-                translation = ""
-                for i in range(length):
-                    translation = translation + response_json[i][0]
-                return translation
-            return
-
-        except KeyboardInterrupt:
-            print("Cancelling transcription")
-            return
-
-    def __init__(self, src, dst, patience=-1):
+    def __init__(self, src, dst, patience=-1, timeout=30):
         self.src = src
         self.dst = dst
         self.patience = patience
+        self.timeout = timeout
 
     async def __call__(self, sentence):
         translated_sentence = []
@@ -55,13 +36,32 @@ class SentenceTranslator:
                 fail_to_translate = False
         return translated_sentence
 
+    async def GoogleTranslate(self, text, src, dst, timeout=30):
+        url = 'https://translate.googleapis.com/translate_a/'
+        params = 'single?client=gtx&sl='+src+'&tl='+dst+'&dt=t&q='+text;
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Referer': 'https://translate.google.com',}
+        try:
+            response = requests.get(url+params, headers=headers, timeout=self.timeout)
+            if response.status_code == 200:
+                response_json = response.json()[0]
+                length = len(response_json)
+                translation = ""
+                for i in range(length):
+                    translation = translation + response_json[i][0]
+                return translation
+            return
+
+        except KeyboardInterrupt:
+            print("Cancelling transcription")
+            return
+
     async def _translate(self, sentence):
         return await self.GoogleTranslate(sentence, src=self.src, dst=self.dst)
 
-    async def run_translation(self, sentence):
+    async def translate(self, sentence):
         return await self(sentence)
 
-    def run_translation_sync(self, sentence):
+    def translate_async(self, sentence):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         return loop.run_until_complete(self(sentence))
@@ -83,7 +83,7 @@ async def main():
     widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
     pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
     transcript_translator = SentenceTranslator(src=src, dst=dst, patience=3)
-    transcript_translator_partial = partial(transcript_translator.run_translation_sync)
+    transcript_translator_partial = partial(transcript_translator.translate_async)
 
     translated_subtitles = []
     for i, translated_subtitle in enumerate(pool.imap(transcript_translator_partial, created_subtitles)):
