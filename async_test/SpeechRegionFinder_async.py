@@ -84,6 +84,7 @@ class WavConverter:
             print(e)
             return
 
+
 class SpeechRegionFinder:
     @staticmethod
     def percentile(arr, percent):
@@ -102,32 +103,41 @@ class SpeechRegionFinder:
         self.max_region_size = max_region_size
 
     async def __call__(self, wav_filepath):
-        reader = wave.open(wav_filepath)
-        sample_width = reader.getsampwidth()
-        rate = reader.getframerate()
-        n_channels = reader.getnchannels()
-        total_duration = reader.getnframes() / rate
-        chunk_duration = float(self.frame_width) / rate
-        n_chunks = int(total_duration / chunk_duration)
-        energies = []
-        for i in range(n_chunks):
-            chunk = reader.readframes(self.frame_width)
-            energies.append(audioop.rms(chunk, sample_width * n_channels))
-        threshold = SpeechRegionFinder.percentile(energies, 0.2)
-        elapsed_time = 0
-        regions = []
-        region_start = None
-        for energy in energies:
-            is_silence = energy <= threshold
-            max_exceeded = region_start and elapsed_time - region_start >= self.max_region_size
-            if (max_exceeded or is_silence) and region_start:
-                if elapsed_time - region_start >= self.min_region_size:
-                    regions.append((region_start, elapsed_time))
-                    region_start = None
-            elif (not region_start) and (not is_silence):
-                region_start = elapsed_time
-            elapsed_time += chunk_duration
-        return regions
+        try:
+            reader = wave.open(wav_filepath)
+            sample_width = reader.getsampwidth()
+            rate = reader.getframerate()
+            n_channels = reader.getnchannels()
+            total_duration = reader.getnframes() / rate
+            chunk_duration = float(self.frame_width) / rate
+            n_chunks = int(total_duration / chunk_duration)
+            energies = []
+            for i in range(n_chunks):
+                chunk = reader.readframes(self.frame_width)
+                energies.append(audioop.rms(chunk, sample_width * n_channels))
+            threshold = SpeechRegionFinder.percentile(energies, 0.2)
+            elapsed_time = 0
+            regions = []
+            region_start = None
+            for energy in energies:
+                is_silence = energy <= threshold
+                max_exceeded = region_start and elapsed_time - region_start >= self.max_region_size
+                if (max_exceeded or is_silence) and region_start:
+                    if elapsed_time - region_start >= self.min_region_size:
+                        regions.append((region_start, elapsed_time))
+                        region_start = None
+                elif (not region_start) and (not is_silence):
+                    region_start = elapsed_time
+                elapsed_time += chunk_duration
+            return regions
+
+        except KeyboardInterrupt:
+            print("Cancelling transcription")
+            return
+
+        except Exception as e:
+            print(e)
+            return
 
 
 def show_progress(percentage):

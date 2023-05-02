@@ -876,7 +876,7 @@ async def main():
     parser.add_argument('-F', '--format', help="Desired subtitle format", default="srt")
     parser.add_argument('-lf', '--list-formats', help="List all supported subtitle formats", action='store_true')
     parser.add_argument('-C', '--concurrency', help="Number of concurrent API requests to make", type=int, default=10)
-    parser.add_argument('-v', '--version', action='version', version='1.2.4')
+    parser.add_argument('-v', '--version', action='version', version='1.2.6')
 
     args = parser.parse_args()
 
@@ -1025,7 +1025,7 @@ async def main():
             pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
 
             transcript_translator = SentenceTranslator(src=args.src_language, dst=args.dst_language)
-            transcript_translator_partial = partial(transcript_translator.run_translation_async)
+            transcript_translator_partial = partial(transcript_translator.translate_async)
 
             translated_subtitles = []
             for i, translated_subtitle in enumerate(pool.imap(transcript_translator_partial, created_subtitles)):
