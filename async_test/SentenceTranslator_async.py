@@ -40,6 +40,7 @@ class SentenceTranslator:
         url = 'https://translate.googleapis.com/translate_a/'
         params = 'single?client=gtx&sl='+src+'&tl='+dst+'&dt=t&q='+text;
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Referer': 'https://translate.google.com',}
+
         try:
             response = requests.get(url+params, headers=headers, timeout=self.timeout)
             if response.status_code == 200:
@@ -51,8 +52,24 @@ class SentenceTranslator:
                 return translation
             return
 
+        except requests.exceptions.ConnectionError:
+            with httpx.Client() as client:
+                response = client.get(url+params, headers=headers, timeout=timeout)
+                if response.status_code == 200:
+                    response_json = response.json()[0]
+                    length = len(response_json)
+                    translation = ""
+                    for i in range(length):
+                        translation = translation + response_json[i][0]
+                    return translation
+                return
+
         except KeyboardInterrupt:
             print("Cancelling transcription")
+            return
+
+        except Exception as e:
+            print(e)
             return
 
     async def _translate(self, sentence):
