@@ -28,12 +28,14 @@ install_requires=[
 if sys.platform == "win32":
     install_requires.append("python-magic>=0.4.27")
     install_requires.append("python_magic_bin>=0.4.14")
+elif sys.platform == "linux":
+    install_requires.append("python-magic>=0.4.27")
 else:
     install_requires.append("python-magic>=0.4.27")
 
 setup(
     name="autosrt",
-    version="1.2.7",
+    version="1.2.8",
     description="a utility for automatic speech recognition and subtitle generation",
     long_description = long_description,
     author="Bot Bahlul",
