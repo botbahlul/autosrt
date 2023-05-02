@@ -450,10 +450,10 @@ class Language:
                         'zu': 'Zulu',
                     }
 
-    def get_name(self, get_code):
+    async def get_name(self, get_code):
         return self.dict.get(get_code.lower(), "")
 
-    def get_code(self, language):
+    async def get_code(self, language):
         for get_code, lang in self.dict.items():
             if lang.lower() == language.lower():
                 return get_code
@@ -734,8 +734,8 @@ class SubtitleFormatter:
 
     def __init__(self, format_type):
         self.format_type = format_type.lower()
-        
-    def __call__(self, subtitles, padding_before=0, padding_after=0):
+
+    async def __call__(self, subtitles, padding_before=0, padding_after=0):
         if self.format_type == 'srt':
             return self.srt_formatter(subtitles, padding_before, padding_after)
         elif self.format_type == 'vtt':
@@ -798,12 +798,12 @@ class SubtitleWriter:
         self.format = format
         self.timed_subtitles = [(r, t) for r, t in zip(self.regions, self.transcripts) if t]
 
-    def get_timed_subtitles(self):
+    async def get_timed_subtitles(self):
         return self.timed_subtitles
 
-    def write(self, declared_subtitle_filepath):
+    async def write(self, declared_subtitle_filepath):
         formatter = SubtitleFormatter(self.format)
-        formatted_subtitles = formatter(self.timed_subtitles)
+        formatted_subtitles = await formatter(self.timed_subtitles)
         saved_subtitle_filepath = declared_subtitle_filepath
         if saved_subtitle_filepath:
             subtitle_file_base, subtitle_file_ext = os.path.splitext(saved_subtitle_filepath)
@@ -1005,7 +1005,7 @@ async def main():
             subtitle_filepath = "{base}.{format}".format(base=base, format=subtitle_format)
 
         writer = SubtitleWriter(regions, transcripts, subtitle_format)
-        writer.write(subtitle_filepath)
+        await writer.write(subtitle_filepath)
 
         if do_translate:
 
@@ -1035,7 +1035,7 @@ async def main():
 
             translated_subtitle_filepath = subtitle_filepath[ :-4] + '.translated.' + subtitle_format
             translation_writer = SubtitleWriter(created_regions, translated_subtitles, subtitle_format)
-            translation_writer.write(translated_subtitle_filepath)
+            await translation_writer.write(translated_subtitle_filepath)
 
         print('Done.')
         if do_translate:
