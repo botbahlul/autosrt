@@ -117,12 +117,15 @@ class SpeechRecognizer(object):
         try:
             for i in range(self.retries):
                 url = "http://www.google.com/speech-api/v2/recognize?client=chromium&lang={lang}&key={key}".format(lang=self.language, key=self.api_key)
-                headers = {"Content-Type": "audio/x-flac; rate=%d" % self.rate}
+                headers = {"Content-Type": "audio/x-flac rate=%d" % self.rate}
 
                 try:
-                    resp = requests.post(url, data=data, headers=headers)
+                    resp = requests.post(url, data=data, headers=headers, timeout=self.timeout)
                 except requests.exceptions.ConnectionError:
-                    continue
+                    try:
+                        resp = httpx.post(url, data=data, headers=headers, timeout=self.timeout)
+                    except httpx.exceptions.NetworkError:
+                        continue
 
                 for line in resp.content.decode('utf-8').split("\n"):
                     try:
@@ -134,7 +137,6 @@ class SpeechRecognizer(object):
                         continue
 
         except KeyboardInterrupt:
-            print("Cancelling transcription")
             return
 
         except Exception as e:
