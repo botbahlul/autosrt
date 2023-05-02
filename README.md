@@ -14,7 +14,7 @@ from autosrt import Language, WavConverter, SpeechRegionFinder, FLACConverter, S
 
 You can learn how to use them by playing around with those scripts inside test folder. Check every def function on each class to know how to use them. They are not to difficult to understand.
 
-PLEASE REMEMBER, DO NOT TO SAVE YOUR SCRIPT FILENAME WITH THE SAME NAME AS A MODULES NAME!
+PLEASE REMEMBER, DON'T SAVE A SCRIPT FILENAME WITH THE SAME NAME AS A MODULES NAME! BECAUSE IT WILL MAKE PYTHON INTERPRETER CONFUSED!
 
 If you are on Linux OS don't forget to install libmagic C library to make python_magic modules work properly by typing this at console terminal :
 ```
