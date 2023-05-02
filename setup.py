@@ -23,15 +23,17 @@ install_requires=[
         "progressbar2>=3.34.3",
         "six>=1.11.0",
         "ffmpeg_progress_yield>=0.7.2",
-        "python-magic>=0.4.27",
 ]
 
 if sys.platform == "win32":
+    install_requires.append("python-magic>=0.4.27")
     install_requires.append("python_magic_bin>=0.4.14")
+else:
+    install_requires.append("python-magic>=0.4.27")
 
 setup(
     name="autosrt",
-    version="1.2.6",
+    version="1.2.7",
     description="a utility for automatic speech recognition and subtitle generation",
     long_description = long_description,
     author="Bot Bahlul",
