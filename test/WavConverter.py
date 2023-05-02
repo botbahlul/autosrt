@@ -68,3 +68,4 @@ pbar = ProgressBar(widgets=widgets, maxval=100).start()
 wav_filepath, SampleRate = wav_converter(video_filepath, progress_callback=show_progress)
 pbar.finish()
 print(wav_filepath, SampleRate)
+
