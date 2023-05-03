@@ -1,5 +1,7 @@
 import sys
 import multiprocessing
+from progressbar import ProgressBar, Percentage, Bar, ETA
+
 
 from autosrt import Language, WavConverter,  SpeechRegionFinder, FLACConverter, SpeechRecognizer, SentenceTranslator, \
     SubtitleFormatter,  SubtitleWriter
@@ -8,6 +10,10 @@ from autosrt import Language, WavConverter,  SpeechRegionFinder, FLACConverter, 
 def show_progress(progress):
    global pbar
    pbar.update(progress)
+
+
+def show_error_messages(messages):
+    print(messages)
 
 
 def main():
@@ -76,30 +82,31 @@ def main():
 
 
     # CONVERT MEDIA FILE TO A TEMPORARY WAV FILE
-    wav_converter = WavConverter()
 
     # CONVERT WITHOUT SHOWING THE PROGRESS
-    audio_filepath, audio_rate = wav_converter(media_filepath)
+    #wav_converter = WavConverter(channels=1, rate=48000, progress_callback=None, error_messages_callback=show_error_messages)
+    #wav_filepath, sample_rate = wav_converter(media_filepath)
 
     # CONVERT WITH SHOWING THE PROGRESS
-    #widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
-    #pbar = ProgressBar(widgets=widgets, maxval=100).start()
-    #audio_filepath, audio_rate = wav_converter(media_filepath, progress_callback=show_progress) 
-    #pbar.finish()
+    wav_converter = WavConverter(channels=1, rate=48000, progress_callback=show_progress, error_messages_callback=show_error_messages)
+    widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
+    pbar = ProgressBar(widgets=widgets, maxval=100).start()
+    wav_filepath, sample_rate = wav_converter(media_filepath)
+    pbar.finish()
 
-    print("audio_filepath = {}".format(audio_filepath))
-    print("audio_rate = {}".format(audio_rate))
+    print("wav_filepath = {}".format(wav_filepath))
+    print("sample_rate = {}".format(sample_rate))
 
 
     # FIND SPEECH REGIONS OF TEMPORARY WAV FILE
-    region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6)
-    regions = region_finder(audio_filepath)
+    region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6, error_messages_callback=show_error_messages)
+    regions = region_finder(wav_filepath)
     print("regions = {}".format(regions))
 
 
     # PREPARE FOR SPEECH RECOGNITION PROGRESS
-    converter = FLACConverter(wav_filepath=audio_filepath)
-    recognizer = SpeechRecognizer(language=src, rate=audio_rate)
+    converter = FLACConverter(wav_filepath=wav_filepath, error_messages_callback=show_error_messages)
+    recognizer = SpeechRecognizer(language=src, rate=sample_rate, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", error_messages_callback=show_error_messages)
 
     pool = multiprocessing.Pool(10)
 
@@ -171,11 +178,9 @@ def main():
     with open(translated_subtitle_filepath, 'a') as tf:
         tf.write("\n")
 
-
     # ALTERNATIVE 2 TO WRITE TRANSLATED SUBTITLE FILE USING SubtitleWriter CLASS
     #translation_writer = SubtitleWriter(created_regions, translated_subtitles, subtitle_format)
     #translation_writer.write(translated_subtitle_filepath)
-
 
     print('Done.')
     print("Original subtitles file created at      : {}".format(subtitle_filepath))

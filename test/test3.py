@@ -7,7 +7,6 @@ import multiprocessing
 from glob import glob
 from progressbar import ProgressBar, Percentage, Bar, ETA
 
-
 from autosrt import VERSION, Language, WavConverter,  SpeechRegionFinder, FLACConverter, SpeechRecognizer, SentenceTranslator, \
     SubtitleFormatter,  SubtitleWriter, \
     stop_ffmpeg_windows, stop_ffmpeg_linux, remove_temp_files, is_same_language, is_video_file, is_audio_file

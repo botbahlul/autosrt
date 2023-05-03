@@ -9,6 +9,9 @@ def show_progress(percentage):
     global pbar
     pbar.update(percentage)
 
+def show_error_messages(messages):
+    print(messages)
+
 def main():
     global pbar
 
@@ -19,15 +22,15 @@ def main():
 
     widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
     pbar = ProgressBar(widgets=widgets, maxval=100).start()
-    wav_converter = WavConverter()
-    audio_filepath, audio_rate = wav_converter(media_filepath, progress_callback=show_progress)
+    wav_converter = WavConverter(channels=1, rate=48000, progress_callback=show_progress, error_messages_callback=show_error_messages)
+    wav_filepath, sample_rate = wav_converter(media_filepath)
     pbar.finish()
 
-    speech_region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6)
-    regions = speech_region_finder(audio_filepath)
+    region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6, error_messages_callback=show_error_messages)
+    regions = region_finder(wav_filepath)
 
-    converter = FLACConverter(wav_filepath=audio_filepath)
-    recognizer = SpeechRecognizer(language=src, rate=audio_rate, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw")
+    converter = FLACConverter(wav_filepath=wav_filepath, error_messages_callback=show_error_messages)
+    recognizer = SpeechRecognizer(language=src, rate=sample_rate, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", error_messages_callback=show_error_messages)
 
     pool = multiprocessing.Pool(10)
 
@@ -52,7 +55,7 @@ def main():
             subtitle_filepath = "harry.srt"
             subtitle_format = "srt"
 
-            writer = SubtitleWriter(regions, transcripts, subtitle_format)
+            writer = SubtitleWriter(regions, transcripts, subtitle_format, error_messages_callback=show_error_messages)
             writer.write(subtitle_filepath)
             timed_subtitles = writer.timed_subtitles
 
@@ -65,7 +68,7 @@ def main():
             prompt = "Translating from %8s to %8s   : " %(src, dst)
             widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
             pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
-            transcript_translator = SentenceTranslator(src=src, dst=dst)
+            transcript_translator = SentenceTranslator(src=src, dst=dst, error_messages_callback=show_error_messages)
             translated_subtitles = []
             for i, translated_subtitle in enumerate(pool.imap(transcript_translator, created_subtitles)):
                 translated_subtitles.append(translated_subtitle)
@@ -73,7 +76,7 @@ def main():
             pbar.finish()
 
             translated_subtitle_filepath = subtitle_filepath[ :-4] + '.translated.' + subtitle_format
-            translation_writer = SubtitleWriter(created_regions, translated_subtitles, subtitle_format)
+            translation_writer = SubtitleWriter(created_regions, translated_subtitles, subtitle_format, error_messages_callback=show_error_messages)
             translation_writer.write(translated_subtitle_filepath)
 
             print('Done.')

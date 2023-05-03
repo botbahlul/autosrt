@@ -9,11 +9,12 @@ from progressbar import ProgressBar, Percentage, Bar, ETA
 import multiprocessing
 
 class SentenceTranslator(object):
-    def __init__(self, src, dst, patience=-1, timeout=30):
+    def __init__(self, src, dst, patience=-1, timeout=30, error_messages_callback=None):
         self.src = src
         self.dst = dst
         self.patience = patience
         self.timeout = timeout
+        self.error_messages_callback = error_messages_callback
 
     def __call__(self, sentence):
         try:
@@ -35,11 +36,17 @@ class SentenceTranslator(object):
             return translated_sentence
 
         except KeyboardInterrupt:
-            print("Cancelling transcription")
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
             return
 
         except Exception as e:
-            print(e)
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
             return
 
     def GoogleTranslate(self, text, src, dst, timeout=30):
@@ -71,12 +78,22 @@ class SentenceTranslator(object):
                 return
 
         except KeyboardInterrupt:
-            print("Cancelling transcription")
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
             return
 
         except Exception as e:
-            print(e)
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
             return
+
+
+def show_error_messages(messages):
+    print(messages)
 
 
 def main():
@@ -94,13 +111,16 @@ def main():
     prompt = "Translating from %8s to %8s         : " %(src, dst)
     widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
     pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
-    transcript_translator = SentenceTranslator(src=src, dst=dst)
+    transcript_translator = SentenceTranslator(src=src, dst=dst, error_messages_callback=show_error_messages)
     translated_subtitles = []
     for i, translated_subtitle in enumerate(pool.imap(transcript_translator, created_subtitles)):
         translated_subtitles.append(translated_subtitle)
         pbar.update(i)
     pbar.finish()
-    print(translated_subtitles)
+    print("translated_subtitles = {}".format(translated_subtitles))
+
+    pool.close()
+    pool.join()
 
 if __name__ == '__main__':
     multiprocessing.freeze_support()

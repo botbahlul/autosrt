@@ -30,42 +30,84 @@ class WavConverter:
             return "ffmpeg.exe"
         return None
 
-    def __init__(self, channels=1, rate=48000):
+    def __init__(self, channels=1, rate=48000, progress_callback=None, error_messages_callback=None):
         self.channels = channels
         self.rate = rate
+        self.progress_callback = progress_callback
+        self.error_messages_callback = error_messages_callback
 
-    def __call__(self, video_filepath, progress_callback=None):
+    def __call__(self, media_filepath):
         temp = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
-        if not os.path.isfile(video_filepath):
-            print("The given file does not exist: {0}".format(video_filepath))
-            raise Exception("Invalid filepath: {0}".format(video_filepath))
+        if not os.path.isfile(media_filepath):
+            if self.error_messages_callback:
+                self.error_messages_callback("The given file does not exist: {0}".format(media_filepath))
+            else:
+                print("The given file does not exist: {0}".format(media_filepath))
+                raise Exception("Invalid file: {0}".format(media_filepath))
         if not self.ffmpeg_check():
-            print("ffmpeg: Executable not found on machine.")
-            raise Exception("Dependency not found: ffmpeg")
-        command = ["ffmpeg", "-y", "-i", video_filepath, "-ac", str(self.channels), "-ar", str(self.rate), "-loglevel", "error", "-hide_banner", temp.name]
-        use_shell = True if os.name == "nt" else False
+            if self.error_messages_callback:
+                self.error_messages_callback("ffmpeg: Executable not found on machine.")
+            else:
+                print("ffmpeg: Executable not found on machine.")
+                raise Exception("Dependency not found: ffmpeg")
 
-        #subprocess.check_output(command, stdin=open(os.devnull), shell=use_shell)
+        command = [
+                    "ffmpeg",
+                    "-y",
+                    "-i", media_filepath,
+                    "-ac", str(self.channels),
+                    "-ar", str(self.rate),
+                    "-loglevel", "error",
+                    "-hide_banner",
+                    temp.name
+                  ]
 
-        ff = FfmpegProgress(command)
-        percentage = 0
-        for progress in ff.run_command_with_progress():
-            percentage = progress
-            if progress_callback:
-                progress_callback(percentage)
+        try:
+            # RUNNING ffmpeg WITHOUT SHOWING PROGRESSS
+            #use_shell = True if os.name == "nt" else False
+            #subprocess.check_output(command, stdin=open(os.devnull), shell=use_shell)
 
-        return temp.name, self.rate
+            # RUNNING ffmpeg WITH PROGRESSS
+            ff = FfmpegProgress(command)
+            percentage = 0
+            for progress in ff.run_command_with_progress():
+                percentage = progress
+                if self.progress_callback:
+                    self.progress_callback(percentage)
+            temp.close()
+        
+            return temp.name, self.rate
+
+        except KeyboardInterrupt:
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
+            return
+
+        except Exception as e:
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+            return
+
 
 def show_progress(percentage):
     global pbar
     pbar.update(percentage)
 
-video_filepath = "balas budi.mp4"
-#wav_converter = WavConverter(channels=1, rate=48000)
-wav_converter = WavConverter()
+def show_error_messages(messages):
+    print(messages)
+
+
+media_filepath = "balas budi.mp4"
+#wav_converter = WavConverter(channels=1, rate=48000, progress_callback=show_progress, error_messages_callback=show_error_messages)
+wav_converter = WavConverter(progress_callback=show_progress, error_messages_callback=show_error_messages)
 widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
 pbar = ProgressBar(widgets=widgets, maxval=100).start()
-wav_filepath, SampleRate = wav_converter(video_filepath, progress_callback=show_progress)
+wav_filepath, sample_rate = wav_converter(media_filepath)
 pbar.finish()
-print(wav_filepath, SampleRate)
+print("wav_filepath = {}".format(wav_filepath))
+print("sample_rate = {}".format(sample_rate))
 
