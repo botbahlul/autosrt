@@ -24,8 +24,9 @@ import ffmpeg_progress_yield
 from ffmpeg_progress_yield import FfmpegProgress
 import magic
 
+VERSION = "1.2.9"
 
-def stop_ffmpeg_windows():
+def stop_ffmpeg_windows(error_messages_callback=None):
     try:
         tasklist_output = subprocess.check_output(['tasklist'], creationflags=subprocess.CREATE_NO_WINDOW).decode('utf-8')
         ffmpeg_pid = None
@@ -36,12 +37,23 @@ def stop_ffmpeg_windows():
         if ffmpeg_pid:
             devnull = open(os.devnull, 'w')
             subprocess.Popen(['taskkill', '/F', '/T', '/PID', ffmpeg_pid], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+
+    except KeyboardInterrupt:
+        if error_messages_callback:
+            error_messages_callback("Cancelling all tasks")
+        else:
+            print("Cancelling all tasks")
+        return
+
     except Exception as e:
-        print(e)
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print(e)
         return
 
 
-def stop_ffmpeg_linux():
+def stop_ffmpeg_linux(error_messages_callback=None):
     process_name = 'ffmpeg'
     try:
         output = subprocess.check_output(['ps', '-ef'])
@@ -51,17 +63,42 @@ def stop_ffmpeg_linux():
     except IndexError:
         #print(f"{process_name} is not running")
         pass
+
+    except KeyboardInterrupt:
+        if error_messages_callback:
+            error_messages_callback("Cancelling all tasks")
+        else:
+            print("Cancelling all tasks")
+        return
+
     except Exception as e:
-        print(e)
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print(e)
         return
 
 
-def remove_temp_files(extension):
-    temp_dir = tempfile.gettempdir()
-    for root, dirs, files in os.walk(temp_dir):
-        for file in files:
-            if file.endswith("." + extension):
-                os.remove(os.path.join(root, file))
+def remove_temp_files(extension, error_messages_callback=None):
+    try:
+        temp_dir = tempfile.gettempdir()
+        for root, dirs, files in os.walk(temp_dir):
+            for file in files:
+                if file.endswith("." + extension):
+                    os.remove(os.path.join(root, file))
+    except KeyboardInterrupt:
+        if error_messages_callback:
+            error_messages_callback("Cancelling all tasks")
+        else:
+            print("Cancelling all tasks")
+        return
+
+    except Exception as e:
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print(e)
+        return
 
 
 def is_same_language(src, dst):
@@ -521,18 +558,26 @@ class WavConverter:
             return "ffmpeg.exe"
         return None
 
-    def __init__(self, channels=1, rate=48000):
+    def __init__(self, channels=1, rate=48000, progress_callback=None, error_messages_callback=None):
         self.channels = channels
         self.rate = rate
+        self.progress_callback = progress_callback
+        self.error_messages_callback = error_messages_callback
 
-    def __call__(self, media_filepath, progress_callback=None):
+    def __call__(self, media_filepath):
         temp = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
         if not os.path.isfile(media_filepath):
-            print("The given file does not exist: {0}".format(media_filepath))
-            raise Exception("Invalid file: {0}".format(media_filepath))
+            if self.error_messages_callback:
+                self.error_messages_callback("The given file does not exist: {0}".format(media_filepath))
+            else:
+                print("The given file does not exist: {0}".format(media_filepath))
+                raise Exception("Invalid file: {0}".format(media_filepath))
         if not self.ffmpeg_check():
-            print("ffmpeg: Executable not found on machine.")
-            raise Exception("Dependency not found: ffmpeg")
+            if self.error_messages_callback:
+                self.error_messages_callback("ffmpeg: Executable not found on machine.")
+            else:
+                print("ffmpeg: Executable not found on machine.")
+                raise Exception("Dependency not found: ffmpeg")
 
         command = [
                     "ffmpeg",
@@ -555,18 +600,24 @@ class WavConverter:
             percentage = 0
             for progress in ff.run_command_with_progress():
                 percentage = progress
-                if progress_callback:
-                    progress_callback(percentage)
+                if self.progress_callback:
+                    self.progress_callback(percentage)
             temp.close()
         
             return temp.name, self.rate
 
         except KeyboardInterrupt:
-            print("Cancelling transcription")
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
             return
 
         except Exception as e:
-            print(e)
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
             return
 
 
@@ -579,6 +630,15 @@ class WavConverter:
 #def show_progress(percentage):
     #global pbar
     #pbar.update(percentage)
+
+# DEFINE error_messages_callback FUNCTION TO SHOW ERROR MESSAGES
+# IF WE'RE IN pysimplegui ENVIRONMENT WE CAN DO :
+#def show_error_messages(messages):
+    #global main_window
+    #main_window.write_event_value('-EXCEPTION-', messages) AND HANDLE THAT EVENT IN pysimplegui MAIN LOOP
+# IF WE'RE IN console ENVIRONMENT WE CAN DO :
+#def show_error_messages(messages):
+    #print(messages)
 
 
 class SpeechRegionFinder:
@@ -593,10 +653,11 @@ class SpeechRegionFinder:
         d1 = arr[int(c)] * (k - f)
         return d0 + d1
 
-    def __init__(self, frame_width=4096, min_region_size=0.5, max_region_size=6):
+    def __init__(self, frame_width=4096, min_region_size=0.5, max_region_size=6, error_messages_callback=None):
         self.frame_width = frame_width
         self.min_region_size = min_region_size
         self.max_region_size = max_region_size
+        self.error_messages_callback = error_messages_callback
 
     def __call__(self, wav_filepath):
         try:
@@ -628,19 +689,26 @@ class SpeechRegionFinder:
             return regions
 
         except KeyboardInterrupt:
-            print("Cancelling transcription")
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
             return
 
         except Exception as e:
-            print(e)
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
             return
 
 
 class FLACConverter(object):
-    def __init__(self, wav_filepath, include_before=0.25, include_after=0.25):
+    def __init__(self, wav_filepath, include_before=0.25, include_after=0.25, error_messages_callback=None):
         self.wav_filepath = wav_filepath
         self.include_before = include_before
         self.include_after = include_after
+        self.error_messages_callback = error_messages_callback
 
     def __call__(self, region):
         try:
@@ -663,21 +731,28 @@ class FLACConverter(object):
             return content
 
         except KeyboardInterrupt:
-            print("Cancelling transcription")
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
             return
 
         except Exception as e:
-            print(e)
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
             return
 
 
 class SpeechRecognizer(object):
-    def __init__(self, language="en", rate=44100, retries=3, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", timeout=30):
+    def __init__(self, language="en", rate=44100, retries=3, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", timeout=30, error_messages_callback=None):
         self.language = language
         self.rate = rate
         self.api_key = api_key
         self.retries = retries
         self.timeout = timeout
+        self.error_messages_callback = error_messages_callback
 
     def __call__(self, data):
         try:
@@ -703,19 +778,27 @@ class SpeechRecognizer(object):
                         continue
 
         except KeyboardInterrupt:
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
             return
 
         except Exception as e:
-            print(e)
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
             return
 
 
 class SentenceTranslator(object):
-    def __init__(self, src, dst, patience=-1, timeout=30):
+    def __init__(self, src, dst, patience=-1, timeout=30, error_messages_callback=None):
         self.src = src
         self.dst = dst
         self.patience = patience
         self.timeout = timeout
+        self.error_messages_callback = error_messages_callback
 
     def __call__(self, sentence):
         try:
@@ -737,11 +820,17 @@ class SentenceTranslator(object):
             return translated_sentence
 
         except KeyboardInterrupt:
-            print("Cancelling transcription")
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
             return
 
         except Exception as e:
-            print(e)
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
             return
 
     def GoogleTranslate(self, text, src, dst, timeout=30):
@@ -773,32 +862,57 @@ class SentenceTranslator(object):
                 return
 
         except KeyboardInterrupt:
-            print("Cancelling transcription")
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
             return
 
         except Exception as e:
-            print(e)
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
             return
 
 
 class SubtitleFormatter:
     supported_formats = ['srt', 'vtt', 'json', 'raw']
 
-    def __init__(self, format_type):
+    def __init__(self, format_type, error_messages_callback=None):
         self.format_type = format_type.lower()
+        self.error_messages_callback = error_messages_callback
         
     def __call__(self, subtitles, padding_before=0, padding_after=0):
-        if self.format_type == 'srt':
-            return self.srt_formatter(subtitles, padding_before, padding_after)
-        elif self.format_type == 'vtt':
-            return self.vtt_formatter(subtitles, padding_before, padding_after)
-        elif self.format_type == 'json':
-            return self.json_formatter(subtitles)
-        elif self.format_type == 'raw':
-            return self.raw_formatter(subtitles)
-        else:
-            raise ValueError(f'Unsupported format type: {self.format_type}')
-        
+        try:
+            if self.format_type == 'srt':
+                return self.srt_formatter(subtitles, padding_before, padding_after)
+            elif self.format_type == 'vtt':
+                return self.vtt_formatter(subtitles, padding_before, padding_after)
+            elif self.format_type == 'json':
+                return self.json_formatter(subtitles)
+            elif self.format_type == 'raw':
+                return self.raw_formatter(subtitles)
+            else:
+                if error_messages_callback:
+                    error_messages_callback(f'Unsupported format type: {self.format_type}')
+                else:
+                    raise ValueError(f'Unsupported format type: {self.format_type}')
+
+        except KeyboardInterrupt:
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
+            return
+
+        except Exception as e:
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+            return
+
     def srt_formatter(self, subtitles, padding_before=0, padding_after=0):
         """
         Serialize a list of subtitles according to the SRT format, with optional time padding.
@@ -844,26 +958,98 @@ class SubtitleFormatter:
 
 
 class SubtitleWriter:
-    def __init__(self, regions, transcripts, format):
+    def __init__(self, regions, transcripts, format, error_messages_callback=None):
         self.regions = regions
         self.transcripts = transcripts
         self.format = format
         self.timed_subtitles = [(r, t) for r, t in zip(self.regions, self.transcripts) if t]
+        self.error_messages_callback = error_messages_callback
 
     def get_timed_subtitles(self):
         return self.timed_subtitles
 
     def write(self, declared_subtitle_filepath):
-        formatter = SubtitleFormatter(self.format)
-        formatted_subtitles = formatter(self.timed_subtitles)
-        saved_subtitle_filepath = declared_subtitle_filepath
-        if saved_subtitle_filepath:
-            subtitle_file_base, subtitle_file_ext = os.path.splitext(saved_subtitle_filepath)
-            if not subtitle_file_ext:
-                saved_subtitle_filepath = "{base}.{format}".format(base=subtitle_file_base, format=self.format)
+        try:
+            formatter = SubtitleFormatter(self.format)
+            formatted_subtitles = formatter(self.timed_subtitles)
+            saved_subtitle_filepath = declared_subtitle_filepath
+            if saved_subtitle_filepath:
+                subtitle_file_base, subtitle_file_ext = os.path.splitext(saved_subtitle_filepath)
+                if not subtitle_file_ext:
+                    saved_subtitle_filepath = "{base}.{format}".format(base=subtitle_file_base, format=self.format)
+                else:
+                    saved_subtitle_filepath = declared_subtitle_filepath
+            with open(saved_subtitle_filepath, 'wb') as f:
+                f.write(formatted_subtitles.encode("utf-8"))
+            #with open(saved_subtitle_filepath, 'a') as f:
+            #    f.write("\n")
+
+        except KeyboardInterrupt:
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
             else:
-                saved_subtitle_filepath = declared_subtitle_filepath
-        with open(saved_subtitle_filepath, 'wb') as f:
-            f.write(formatted_subtitles.encode("utf-8"))
-        with open(saved_subtitle_filepath, 'a') as f:
-            f.write("\n")
+                print("Cancelling all tasks")
+            return
+
+        except Exception as e:
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+            return
+
+
+class SRTFileReader:
+    def __init__(self, srt_file_path, error_messages_callback=None):
+        self.timed_subtitles = self(srt_file_path)
+        self.error_messages_callback = error_messages_callback
+
+    @staticmethod
+    def __call__(srt_file_path):
+        try:
+            """
+            Read SRT formatted subtitle file and return subtitles as list of tuples
+            """
+            timed_subtitles = []
+            with open(srt_file_path, 'r') as srt_file:
+                lines = srt_file.readlines()
+                # Split the subtitle file into subtitle blocks
+                subtitle_blocks = []
+                block = []
+                for line in lines:
+                    if line.strip() == '':
+                        subtitle_blocks.append(block)
+                        block = []
+                    else:
+                        block.append(line.strip())
+                subtitle_blocks.append(block)
+
+                # Parse each subtitle block and store as tuple in timed_subtitles list
+                for block in subtitle_blocks:
+                    if block:
+                        # Extract start and end times from subtitle block
+                        start_time_str, end_time_str = block[1].split(' --> ')
+                        time_format = '%H:%M:%S,%f'
+                        start_time_time_delta = datetime.strptime(start_time_str, time_format) - datetime.strptime('00:00:00,000', time_format)
+                        start_time_total_seconds = start_time_time_delta.total_seconds()
+                        end_time_time_delta = datetime.strptime(end_time_str, time_format) - datetime.strptime('00:00:00,000', time_format)
+                        end_time_total_seconds = end_time_time_delta.total_seconds()
+                        # Extract subtitle text from subtitle block
+                        subtitle = ' '.join(block[2:])
+                        timed_subtitles.append(((start_time_total_seconds, end_time_total_seconds), subtitle))
+                return timed_subtitles
+
+        except KeyboardInterrupt:
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
+            return
+
+        except Exception as e:
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+            return
+

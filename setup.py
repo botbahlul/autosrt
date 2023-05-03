@@ -6,6 +6,7 @@ try:
     from setuptools import setup
 except ImportError:
     from distutils.core import setup
+from autosrt import VERSION
 
 long_description = (
     'autosrt is a utility for automatic speech recognition and subtitle generation.'
@@ -35,7 +36,7 @@ else:
 
 setup(
     name="autosrt",
-    version="1.2.8",
+    version=VERSION,
     description="a utility for automatic speech recognition and subtitle generation",
     long_description = long_description,
     author="Bot Bahlul",

@@ -7,24 +7,27 @@ import multiprocessing
 from glob import glob
 from progressbar import ProgressBar, Percentage, Bar, ETA
 
-from .autosrt import Language, WavConverter,  SpeechRegionFinder, FLACConverter, SpeechRecognizer, SentenceTranslator, \
+from .autosrt import VERSION, Language, WavConverter,  SpeechRegionFinder, FLACConverter, SpeechRecognizer, SentenceTranslator, \
     SubtitleFormatter,  SubtitleWriter, \
     stop_ffmpeg_windows, stop_ffmpeg_linux, remove_temp_files, is_same_language, is_video_file, is_audio_file
 
-def show_progress(percentage):
+def show_progress(progress):
     global pbar
-    pbar.update(percentage)
+    pbar.update(progress)
+
+def show_error_messages(messages):
+    print(messages)
 
 def main():
     global pbar
 
     if sys.platform == "win32":
-        stop_ffmpeg_windows()
+        stop_ffmpeg_windows(error_messages_callback=show_error_messages)
     else:
-        stop_ffmpeg_linux()
+        stop_ffmpeg_linux(error_messages_callback=show_error_messages)
 
-    remove_temp_files("flac")
-    remove_temp_files("wav")
+    remove_temp_files("flac", error_messages_callback=show_error_messages)
+    remove_temp_files("wav", error_messages_callback=show_error_messages)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('source_path', help="File path of the video or audio files to generate subtitles files (use wildcard for multiple files or separate them with a space character)", nargs='*')
@@ -35,7 +38,7 @@ def main():
     parser.add_argument('-F', '--format', help="Desired subtitle format", default="srt")
     parser.add_argument('-lf', '--list-formats', help="List all supported subtitle formats", action='store_true')
     parser.add_argument('-C', '--concurrency', help="Number of concurrent API requests to make", type=int, default=10)
-    parser.add_argument('-v', '--version', action='version', version='1.2.8')
+    parser.add_argument('-v', '--version', action='version', version=VERSION)
 
     args = parser.parse_args()
 
@@ -100,15 +103,15 @@ def main():
 
         widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
         pbar = ProgressBar(widgets=widgets, maxval=100).start()
-        wav_converter = WavConverter()
-        audio_filepath, audio_rate = wav_converter(media_filepath, progress_callback=show_progress)
+        wav_converter = WavConverter(progress_callback=show_progress, error_messages_callback=show_error_messages)
+        wav_filepath, sample_rate = wav_converter(media_filepath)
         pbar.finish()
 
-        region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6)
-        regions = region_finder(audio_filepath)
+        region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6, error_messages_callback=show_error_messages)
+        regions = region_finder(wav_filepath)
 
-        converter = FLACConverter(wav_filepath=audio_filepath)
-        recognizer = SpeechRecognizer(language=args.src_language, rate=audio_rate, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw")
+        converter = FLACConverter(wav_filepath=wav_filepath, error_messages_callback=show_error_messages)
+        recognizer = SpeechRecognizer(language=args.src_language, rate=sample_rate, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", error_messages_callback=show_error_messages)
 
         pool = multiprocessing.Pool(args.concurrency)
 
@@ -135,7 +138,7 @@ def main():
                 pool.terminate()
                 pool.close()
                 pool.join()
-                print("Cancelling transcription")
+                print("Cancelling all tasks")
                 return 1
 
             except Exception as e:
@@ -159,11 +162,10 @@ def main():
             base, ext = os.path.splitext(media_filepath)
             subtitle_filepath = "{base}.{format}".format(base=base, format=subtitle_format)
 
-        writer = SubtitleWriter(regions, transcripts, subtitle_format)
+        writer = SubtitleWriter(regions, transcripts, subtitle_format, error_messages_callback=show_error_messages)
         writer.write(subtitle_filepath)
 
         if do_translate:
-
             # CONCURRENT TRANSLATION USING class SentenceTranslator(object)
             # NO NEED TO TRANSLATE ALL transcript IN transcripts
             # BECAUSE SOME region IN regions MAY JUST HAVE transcript WITH EMPTY STRING
@@ -178,7 +180,9 @@ def main():
             prompt = "Translating from %8s to %8s   : " %(args.src_language, args.dst_language)
             widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
             pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
-            transcript_translator = SentenceTranslator(src=args.src_language, dst=args.dst_language)
+
+            transcript_translator = SentenceTranslator(src=args.src_language, dst=args.dst_language, error_messages_callback=show_error_messages)
+
             translated_subtitles = []
             for i, translated_subtitle in enumerate(pool.imap(transcript_translator, created_subtitles)):
                 translated_subtitles.append(translated_subtitle)
@@ -186,7 +190,7 @@ def main():
             pbar.finish()
 
             translated_subtitle_filepath = subtitle_filepath[ :-4] + '.translated.' + subtitle_format
-            translation_writer = SubtitleWriter(created_regions, translated_subtitles, subtitle_format)
+            translation_writer = SubtitleWriter(created_regions, translated_subtitles, subtitle_format, error_messages_callback=show_error_messages)
             translation_writer.write(translated_subtitle_filepath)
 
         print('Done.')
@@ -197,9 +201,9 @@ def main():
             print("Subtitles file created at               : {}".format(subtitle_filepath))
 
     if sys.platform == "win32":
-        stop_ffmpeg_windows()
+        stop_ffmpeg_windows(error_messages_callback=show_error_messages)
     else:
-        stop_ffmpeg_linux()
+        stop_ffmpeg_linux(error_messages_callback=show_error_messages)
 
     pool.close()
     pool.join()
