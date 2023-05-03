@@ -36,11 +36,13 @@ class WavConverter:
             return "ffmpeg.exe"
         return None
 
-    def __init__(self, channels=1, rate=48000):
+    def __init__(self, channels=1, rate=48000, progress_callback=None, error_messages_callback=None):
         self.channels = channels
         self.rate = rate
+        self.progress_callback = progress_callback
+        self.error_messages_callback = error_messages_callback
 
-    def __call__(self, media_filepath, progress_callback=None):
+    async def __call__(self, media_filepath):
         temp = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
         if not os.path.isfile(media_filepath):
             print("The given file does not exist: {0}".format(media_filepath))
@@ -61,28 +63,37 @@ class WavConverter:
                   ]
 
         try:
-            # RUNNING ffmpeg WITHOUT SHOWING PROGRESSS
-            #use_shell = True if os.name == "nt" else False
-            #subprocess.check_output(command, stdin=open(os.devnull), shell=use_shell)
-
-            # RUNNING ffmpeg WITH PROGRESSS
             ff = FfmpegProgress(command)
             percentage = 0
             for progress in ff.run_command_with_progress():
                 percentage = progress
-                if progress_callback:
-                    progress_callback(percentage)
+                if self.progress_callback:
+                    self.progress_callback(percentage)
             temp.close()
-        
+
             return temp.name, self.rate
 
         except KeyboardInterrupt:
-            print("Cancelling transcription")
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
             return
 
         except Exception as e:
-            print(e)
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
             return
+
+    async def convert(self, media_filepath):
+        return await self(media_filepath, self.progress_callback)
+
+    @staticmethod
+    async def convert_async(media_filepath, wav_converter):
+        loop = asyncio.get_running_loop()
+        return await loop.create_task(wav_converter(media_filepath))
 
 
 class SpeechRegionFinder:
@@ -97,10 +108,11 @@ class SpeechRegionFinder:
         d1 = arr[int(c)] * (k - f)
         return d0 + d1
 
-    def __init__(self, frame_width=4096, min_region_size=0.5, max_region_size=6):
+    def __init__(self, frame_width=4096, min_region_size=0.5, max_region_size=6, error_messages_callback=None):
         self.frame_width = frame_width
         self.min_region_size = min_region_size
         self.max_region_size = max_region_size
+        self.error_messages_callback = error_messages_callback
 
     async def __call__(self, wav_filepath):
         try:
@@ -132,11 +144,17 @@ class SpeechRegionFinder:
             return regions
 
         except KeyboardInterrupt:
-            print("Cancelling transcription")
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
             return
 
         except Exception as e:
-            print(e)
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
             return
 
 
@@ -144,24 +162,25 @@ def show_progress(percentage):
     global pbar
     pbar.update(percentage)
 
+def show_error_messages(messages):
+    print(messages)
+
 
 async def main():
     global pbar
 
-    video_filepath = "balas budi.mp4"
+    media_filepath = "balas budi.mp4"
 
-    #wav_converter = WavConverter(channels=1, rate=48000)
-    wav_converter = WavConverter()
     widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
     pbar = ProgressBar(widgets=widgets, maxval=100).start()
-    wav_filepath, audio_rate = wav_converter(video_filepath, progress_callback=show_progress)
+    wav_converter = WavConverter(channels=1, rate=48000, progress_callback=show_progress, error_messages_callback=show_error_messages)
+    wav_converter_partial = partial(wav_converter.convert_async, wav_converter=wav_converter)
+    wav_filepath, sample_rate = await asyncio.create_task(wav_converter_partial(media_filepath))
     pbar.finish()
-
     print("wav_filepath = {}".format(wav_filepath))
-    print("audio_rate = {}".format(audio_rate))
+    print("sample_rate = {}".format(sample_rate))
 
-    region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6)
-
+    region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6, error_messages_callback=show_error_messages)
     regions = await region_finder(wav_filepath)
     print("regions = {}".format(regions))
 

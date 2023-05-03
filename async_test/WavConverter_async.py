@@ -31,11 +31,13 @@ class WavConverter:
             return "ffmpeg.exe"
         return None
 
-    def __init__(self, channels=1, rate=48000):
+    def __init__(self, channels=1, rate=48000, progress_callback=None, error_messages_callback=None):
         self.channels = channels
         self.rate = rate
+        self.progress_callback = progress_callback
+        self.error_messages_callback = error_messages_callback
 
-    async def __call__(self, media_filepath, progress_callback=None):
+    async def __call__(self, media_filepath):
         temp = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
         if not os.path.isfile(media_filepath):
             print("The given file does not exist: {0}".format(media_filepath))
@@ -60,31 +62,41 @@ class WavConverter:
             percentage = 0
             for progress in ff.run_command_with_progress():
                 percentage = progress
-                if progress_callback:
-                    progress_callback(percentage)
+                if self.progress_callback:
+                    self.progress_callback(percentage)
             temp.close()
 
             return temp.name, self.rate
 
         except KeyboardInterrupt:
-            print("Cancelling transcription")
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
             return
 
         except Exception as e:
-            print(e)
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
             return
 
-    async def convert(self, media_filepath, progress_callback):
-        return await self(media_filepath, progress_callback)
+    async def convert(self, media_filepath):
+        return await self(media_filepath, self.progress_callback)
 
     @staticmethod
-    async def convert_async(media_filepath, wav_converter, progress_callback):
+    async def convert_async(media_filepath, wav_converter):
         loop = asyncio.get_running_loop()
-        return await loop.create_task(wav_converter(media_filepath, progress_callback))
+        return await loop.create_task(wav_converter(media_filepath))
+
 
 def show_progress(percentage):
     global pbar
     pbar.update(percentage)
+
+def show_error_messages(messages):
+    print(messages)
 
 async def main():
     global pbar
@@ -93,15 +105,12 @@ async def main():
 
     widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
     pbar = ProgressBar(widgets=widgets, maxval=100).start()
-
-    wav_converter = WavConverter()
-    wav_converter_partial = partial(wav_converter.convert_async, wav_converter=wav_converter, progress_callback=show_progress)
-    wav_filepath, audio_rate = await asyncio.create_task(wav_converter_partial(media_filepath, progress_callback=show_progress))
-
+    wav_converter = WavConverter(channels=1, rate=48000, progress_callback=show_progress, error_messages_callback=show_error_messages)
+    wav_converter_partial = partial(wav_converter.convert_async, wav_converter=wav_converter)
+    wav_filepath, sample_rate = await asyncio.create_task(wav_converter_partial(media_filepath))
     pbar.finish()
-
     print("wav_filepath = {}".format(wav_filepath))
-    print("audio_rate = {}".format(audio_rate))
+    print("sample_rate = {}".format(sample_rate))
 
 if __name__ == '__main__':
     asyncio.run(main())

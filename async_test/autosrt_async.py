@@ -27,6 +27,82 @@ import asyncio
 from functools import partial
 import concurrent.futures
 
+VERSION = "1.2.9"
+
+def stop_ffmpeg_windows(error_messages_callback=None):
+    try:
+        tasklist_output = subprocess.check_output(['tasklist'], creationflags=subprocess.CREATE_NO_WINDOW).decode('utf-8')
+        ffmpeg_pid = None
+        for line in tasklist_output.split('\n'):
+            if "ffmpeg" in line:
+                ffmpeg_pid = line.split()[1]
+                break
+        if ffmpeg_pid:
+            devnull = open(os.devnull, 'w')
+            subprocess.Popen(['taskkill', '/F', '/T', '/PID', ffmpeg_pid], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+
+    except KeyboardInterrupt:
+        if error_messages_callback:
+            error_messages_callback("Cancelling all tasks")
+        else:
+            print("Cancelling all tasks")
+        return
+
+    except Exception as e:
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print(e)
+        return
+
+
+def stop_ffmpeg_linux(error_messages_callback=None):
+    process_name = 'ffmpeg'
+    try:
+        output = subprocess.check_output(['ps', '-ef'])
+        pid = [line.split()[1] for line in output.decode('utf-8').split('\n') if process_name in line][0]
+        subprocess.call(['kill', '-9', str(pid)])
+        #print(f"{process_name} has been killed")
+    except IndexError:
+        #print(f"{process_name} is not running")
+        pass
+
+    except KeyboardInterrupt:
+        if error_messages_callback:
+            error_messages_callback("Cancelling all tasks")
+        else:
+            print("Cancelling all tasks")
+        return
+
+    except Exception as e:
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print(e)
+        return
+
+
+def remove_temp_files(extension, error_messages_callback=None):
+    try:
+        temp_dir = tempfile.gettempdir()
+        for root, dirs, files in os.walk(temp_dir):
+            for file in files:
+                if file.endswith("." + extension):
+                    os.remove(os.path.join(root, file))
+    except KeyboardInterrupt:
+        if error_messages_callback:
+            error_messages_callback("Cancelling all tasks")
+        else:
+            print("Cancelling all tasks")
+        return
+
+    except Exception as e:
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print(e)
+        return
+
 
 def is_same_language(src, dst):
     return src.split("-")[0] == dst.split("-")[0]
@@ -485,11 +561,13 @@ class WavConverter:
             return "ffmpeg.exe"
         return None
 
-    def __init__(self, channels=1, rate=48000):
+    def __init__(self, channels=1, rate=48000, progress_callback=None, error_messages_callback=None):
         self.channels = channels
         self.rate = rate
+        self.progress_callback = progress_callback
+        self.error_messages_callback = error_messages_callback
 
-    async def __call__(self, media_filepath, progress_callback=None):
+    async def __call__(self, media_filepath):
         temp = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
         if not os.path.isfile(media_filepath):
             print("The given file does not exist: {0}".format(media_filepath))
@@ -514,36 +592,33 @@ class WavConverter:
             percentage = 0
             for progress in ff.run_command_with_progress():
                 percentage = progress
-                if progress_callback:
-                    progress_callback(percentage)
+                if self.progress_callback:
+                    self.progress_callback(percentage)
             temp.close()
 
             return temp.name, self.rate
 
         except KeyboardInterrupt:
-            print("Cancelling transcription")
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
             return
 
         except Exception as e:
-            print(e)
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
             return
 
-    async def convert(self, media_filepath, progress_callback):
-        return await self(media_filepath, progress_callback)
+    async def convert(self, media_filepath):
+        return await self(media_filepath, self.progress_callback)
 
     @staticmethod
-    async def convert_async(media_filepath, wav_converter, progress_callback):
+    async def convert_async(media_filepath, wav_converter):
         loop = asyncio.get_running_loop()
-        return await loop.create_task(wav_converter(media_filepath, progress_callback))
-
-
-# DEFINE progress_callback FUNCTION TO SHOW ffmpeg PROGRESS
-# IF WE'RE IN pysimplegui ENVIRONMENT WE CAN DO :
-# global main_window
-# main_window.write_event_value('-UPDATE-PROGRESS-', percentage) AND HANDLE THAT EVENT IN pysimplegui MAIN LOOP
-def show_progress(percentage):
-    global pbar
-    pbar.update(percentage)
+        return await loop.create_task(wav_converter(media_filepath))
 
 
 class SpeechRegionFinder:
@@ -558,45 +633,62 @@ class SpeechRegionFinder:
         d1 = arr[int(c)] * (k - f)
         return d0 + d1
 
-    def __init__(self, frame_width=4096, min_region_size=0.5, max_region_size=6):
+    def __init__(self, frame_width=4096, min_region_size=0.5, max_region_size=6, error_messages_callback=None):
         self.frame_width = frame_width
         self.min_region_size = min_region_size
         self.max_region_size = max_region_size
+        self.error_messages_callback = error_messages_callback
 
     async def __call__(self, wav_filepath):
-        reader = wave.open(wav_filepath)
-        sample_width = reader.getsampwidth()
-        rate = reader.getframerate()
-        n_channels = reader.getnchannels()
-        total_duration = reader.getnframes() / rate
-        chunk_duration = float(self.frame_width) / rate
-        n_chunks = int(total_duration / chunk_duration)
-        energies = []
-        for i in range(n_chunks):
-            chunk = reader.readframes(self.frame_width)
-            energies.append(audioop.rms(chunk, sample_width * n_channels))
-        threshold = SpeechRegionFinder.percentile(energies, 0.2)
-        elapsed_time = 0
-        regions = []
-        region_start = None
-        for energy in energies:
-            is_silence = energy <= threshold
-            max_exceeded = region_start and elapsed_time - region_start >= self.max_region_size
-            if (max_exceeded or is_silence) and region_start:
-                if elapsed_time - region_start >= self.min_region_size:
-                    regions.append((region_start, elapsed_time))
-                    region_start = None
-            elif (not region_start) and (not is_silence):
-                region_start = elapsed_time
-            elapsed_time += chunk_duration
-        return regions
+        try:
+            reader = wave.open(wav_filepath)
+            sample_width = reader.getsampwidth()
+            rate = reader.getframerate()
+            n_channels = reader.getnchannels()
+            total_duration = reader.getnframes() / rate
+            chunk_duration = float(self.frame_width) / rate
+            n_chunks = int(total_duration / chunk_duration)
+            energies = []
+            for i in range(n_chunks):
+                chunk = reader.readframes(self.frame_width)
+                energies.append(audioop.rms(chunk, sample_width * n_channels))
+            threshold = SpeechRegionFinder.percentile(energies, 0.2)
+            elapsed_time = 0
+            regions = []
+            region_start = None
+            for energy in energies:
+                is_silence = energy <= threshold
+                max_exceeded = region_start and elapsed_time - region_start >= self.max_region_size
+                if (max_exceeded or is_silence) and region_start:
+                    if elapsed_time - region_start >= self.min_region_size:
+                        regions.append((region_start, elapsed_time))
+                        region_start = None
+                elif (not region_start) and (not is_silence):
+                    region_start = elapsed_time
+                elapsed_time += chunk_duration
+            return regions
+
+        except KeyboardInterrupt:
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
+            return
+
+        except Exception as e:
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+            return
 
 
 class FLACConverter:
-    def __init__(self, wav_filepath, include_before=0.25, include_after=0.25):
+    def __init__(self, wav_filepath, include_before=0.25, include_after=0.25, error_messages_callback=None):
         self.wav_filepath = wav_filepath
         self.include_before = include_before
         self.include_after = include_after
+        self.error_messages_callback = error_messages_callback
 
     async def __call__(self, region):
         try:
@@ -605,9 +697,14 @@ class FLACConverter:
             end += self.include_after
             temp = tempfile.NamedTemporaryFile(suffix='.flac', delete=False)
             command = [
-                "ffmpeg", "-ss", str(start), "-t", str(end - start), "-y",
-                "-i", self.wav_filepath, "-loglevel", "error", temp.name
-            ]
+                        "ffmpeg",
+                        "-ss", str(start),
+                        "-t", str(end - start),
+                        "-y",
+                        "-i", self.wav_filepath,
+                        "-loglevel", "error",
+                        temp.name
+                      ]
             process = await asyncio.create_subprocess_exec(*command, stdin=subprocess.DEVNULL)
             await process.communicate()
             content = temp.read()
@@ -615,7 +712,26 @@ class FLACConverter:
             return content
 
         except asyncio.CancelledError:
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
             return
+
+        except KeyboardInterrupt:
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
+            return
+
+        except Exception as e:
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+            return
+
 
     async def convert(regions, flac_converter):
         return await flac_converter(regions)
@@ -626,11 +742,13 @@ class FLACConverter:
 
 
 class SpeechRecognizer:
-    def __init__(self, language="en", rate=44100, retries=3, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"):
+    def __init__(self, language="en", rate=44100, retries=3, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", timeout=30, error_messages_callback=None):
         self.language = language
         self.rate = rate
         self.api_key = api_key
         self.retries = retries
+        self.timeout = timeout
+        self.error_messages_callback = error_messages_callback
 
     async def __call__(self, data):
         try:
@@ -639,14 +757,16 @@ class SpeechRecognizer:
                 headers = {"Content-Type": "audio/x-flac; rate=%d" % self.rate}
                 loop = asyncio.get_running_loop()
                 pool = concurrent.futures.ThreadPoolExecutor()
-
                 try:
                     with concurrent.futures.ThreadPoolExecutor() as pool:
-                        fut = pool.submit(requests.post, url, data=data, headers=headers)
+                        fut = pool.submit(requests.post, url, data=data, headers=headers, timeout=self.timeout)
                         resp = await asyncio.wrap_future(fut)
-
                 except requests.exceptions.ConnectionError:
-                    continue
+                    try:
+                        fut = pool.submit(httpx.post, url, data=data, headers=headers, timeout=self.timeout)
+                        resp = httpx.post(url, data=data, headers=headers, timeout=self.timeout)
+                    except httpx.exceptions.NetworkError:
+                        continue
 
                 for line in resp.content.decode('utf-8').split("\n"):
                     try:
@@ -658,12 +778,19 @@ class SpeechRecognizer:
                         continue
 
         except KeyboardInterrupt:
-            print("Cancelling transcription")
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
             return
 
         except Exception as e:
-            print(e)
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
             return
+
 
     async def get_transcription(extracted_regions, recognizer):
         return await recognizer(extracted_regions)
@@ -674,34 +801,52 @@ class SpeechRecognizer:
 
 
 class SentenceTranslator:
-    def __init__(self, src, dst, patience=-1, timeout=30):
+    def __init__(self, src, dst, patience=-1, timeout=30, error_messages_callback=None):
         self.src = src
         self.dst = dst
         self.patience = patience
         self.timeout = timeout
+        self.error_messages_callback = error_messages_callback
 
     async def __call__(self, sentence):
-        translated_sentence = []
-        if not sentence:
-            return None
+        try:
+            translated_sentence = []
+            if not sentence:
+                return None
 
-        translated_sentence = await self._translate(sentence)
+            translated_sentence = await self._translate(sentence)
 
-        fail_to_translate = translated_sentence[-1] == '\n'
-        while fail_to_translate and self.patience:
-            translated_sentence = await self._translate(translated_sentence)
-            if translated_sentence[-1] == '\n':
-                if self.patience == -1:
-                    continue
-                self.patience -= 1
+            fail_to_translate = translated_sentence[-1] == '\n'
+            while fail_to_translate and self.patience:
+                translated_sentence = await self._translate(translated_sentence)
+                if translated_sentence[-1] == '\n':
+                    if self.patience == -1:
+                        continue
+                    self.patience -= 1
+                else:
+                    fail_to_translate = False
+            return translated_sentence
+
+        except KeyboardInterrupt:
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
             else:
-                fail_to_translate = False
-        return translated_sentence
+                print("Cancelling all tasks")
+            return
+
+        except Exception as e:
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+            return
+
 
     async def GoogleTranslate(self, text, src, dst, timeout=30):
         url = 'https://translate.googleapis.com/translate_a/'
         params = 'single?client=gtx&sl='+src+'&tl='+dst+'&dt=t&q='+text;
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Referer': 'https://translate.google.com',}
+
         try:
             response = requests.get(url+params, headers=headers, timeout=self.timeout)
             if response.status_code == 200:
@@ -713,8 +858,30 @@ class SentenceTranslator:
                 return translation
             return
 
+        except requests.exceptions.ConnectionError:
+            with httpx.Client() as client:
+                response = client.get(url+params, headers=headers, timeout=timeout)
+                if response.status_code == 200:
+                    response_json = response.json()[0]
+                    length = len(response_json)
+                    translation = ""
+                    for i in range(length):
+                        translation = translation + response_json[i][0]
+                    return translation
+                return
+
         except KeyboardInterrupt:
-            print("Cancelling transcription")
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
+            return
+
+        except Exception as e:
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
             return
 
     async def _translate(self, sentence):
@@ -732,21 +899,37 @@ class SentenceTranslator:
 class SubtitleFormatter:
     supported_formats = ['srt', 'vtt', 'json', 'raw']
 
-    def __init__(self, format_type):
+    def __init__(self, format_type, error_messages_callback=None):
         self.format_type = format_type.lower()
+        self.error_messages_callback = error_messages_callback
 
     async def __call__(self, subtitles, padding_before=0, padding_after=0):
-        if self.format_type == 'srt':
-            return self.srt_formatter(subtitles, padding_before, padding_after)
-        elif self.format_type == 'vtt':
-            return self.vtt_formatter(subtitles, padding_before, padding_after)
-        elif self.format_type == 'json':
-            return self.json_formatter(subtitles)
-        elif self.format_type == 'raw':
-            return self.raw_formatter(subtitles)
-        else:
-            raise ValueError(f'Unsupported format type: {self.format_type}')
+        try:
+            if self.format_type == 'srt':
+                return self.srt_formatter(subtitles, padding_before, padding_after)
+            elif self.format_type == 'vtt':
+                return self.vtt_formatter(subtitles, padding_before, padding_after)
+            elif self.format_type == 'json':
+                return self.json_formatter(subtitles)
+            elif self.format_type == 'raw':
+                return self.raw_formatter(subtitles)
+            else:
+                raise ValueError(f'Unsupported format type: {self.format_type}')
         
+        except KeyboardInterrupt:
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
+            return
+
+        except Exception as e:
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+            return
+
     def srt_formatter(self, subtitles, padding_before=0, padding_after=0):
         """
         Serialize a list of subtitles according to the SRT format, with optional time padding.
@@ -792,32 +975,48 @@ class SubtitleFormatter:
 
 
 class SubtitleWriter:
-    def __init__(self, regions, transcripts, format):
+    def __init__(self, regions, transcripts, format, error_messages_callback=None):
         self.regions = regions
         self.transcripts = transcripts
         self.format = format
         self.timed_subtitles = [(r, t) for r, t in zip(self.regions, self.transcripts) if t]
+        self.error_messages_callback = error_messages_callback
 
     async def get_timed_subtitles(self):
         return self.timed_subtitles
 
     async def write(self, declared_subtitle_filepath):
-        formatter = SubtitleFormatter(self.format)
-        formatted_subtitles = await formatter(self.timed_subtitles)
-        saved_subtitle_filepath = declared_subtitle_filepath
-        if saved_subtitle_filepath:
-            subtitle_file_base, subtitle_file_ext = os.path.splitext(saved_subtitle_filepath)
-            if not subtitle_file_ext:
-                saved_subtitle_filepath = "{base}.{format}".format(base=subtitle_file_base, format=self.format)
+        try:
+            formatter = SubtitleFormatter(self.format)
+            formatted_subtitles = await formatter(self.timed_subtitles)
+            saved_subtitle_filepath = declared_subtitle_filepath
+            if saved_subtitle_filepath:
+                subtitle_file_base, subtitle_file_ext = os.path.splitext(saved_subtitle_filepath)
+                if not subtitle_file_ext:
+                    saved_subtitle_filepath = "{base}.{format}".format(base=subtitle_file_base, format=self.format)
+                else:
+                    saved_subtitle_filepath = declared_subtitle_filepath
+            with open(saved_subtitle_filepath, 'wb') as f:
+                f.write(formatted_subtitles.encode("utf-8"))
+            #with open(saved_subtitle_filepath, 'a') as f:
+                #f.write("\n")
+
+        except KeyboardInterrupt:
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
             else:
-                saved_subtitle_filepath = declared_subtitle_filepath
-        with open(saved_subtitle_filepath, 'wb') as f:
-            f.write(formatted_subtitles.encode("utf-8"))
-        with open(saved_subtitle_filepath, 'a') as f:
-            f.write("\n")
+                print("Cancelling all tasks")
+            return
+
+        except Exception as e:
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+            return
 
 
-def stop_ffmpeg_windows():
+def stop_ffmpeg_windows(error_messages_callback=None):
     try:
         tasklist_output = subprocess.check_output(['tasklist'], creationflags=subprocess.CREATE_NO_WINDOW).decode('utf-8')
         ffmpeg_pid = None
@@ -828,44 +1027,50 @@ def stop_ffmpeg_windows():
         if ffmpeg_pid:
             devnull = open(os.devnull, 'w')
             subprocess.Popen(['taskkill', '/F', '/T', '/PID', ffmpeg_pid], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+
+    except KeyboardInterrupt:
+        if error_messages_callback:
+            error_messages_callback("Cancelling all tasks")
+        else:
+            print("Cancelling all tasks")
+        return
+
     except Exception as e:
-        print(e)
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print(e)
         return
 
 
-def stop_ffmpeg_linux():
-    process_name = 'ffmpeg'
-    try:
-        output = subprocess.check_output(['ps', '-ef'])
-        pid = [line.split()[1] for line in output.decode('utf-8').split('\n') if process_name in line][0]
-        subprocess.call(['kill', '-9', str(pid)])
-        #print(f"{process_name} has been killed")
-    except IndexError:
-        #print(f"{process_name} is not running")
-        pass
-    except Exception as e:
-        print(e)
-        return
+# DEFINE progress_callback FUNCTION TO SHOW ffmpeg PROGRESS
+# IF WE'RE IN pysimplegui ENVIRONMENT WE CAN DO :
+# global main_window
+# main_window.write_event_value('-UPDATE-PROGRESS-', percentage) AND HANDLE THAT EVENT IN pysimplegui MAIN LOOP
+def show_progress(percentage):
+    global pbar
+    pbar.update(percentage)
 
 
-def remove_temp_files(extension):
-    temp_dir = tempfile.gettempdir()
-    for root, dirs, files in os.walk(temp_dir):
-        for file in files:
-            if file.endswith("." + extension):
-                os.remove(os.path.join(root, file))
+# DEFINE error_messages_callback FUNCTION TO SHOW ERROR MESSAGES
+# IF WE'RE IN pysimplegui ENVIRONMENT WE CAN DO :
+#def show_error_messages(messages):
+    #global main_window
+    #main_window.write_event_value('-EXCEOTION-', messages) AND HANDLE THAT EVENT IN pysimplegui MAIN LOOP
+def show_error_messages(messages):
+    print(messages)
 
 
 async def main():
     global pbar
 
     if sys.platform == "win32":
-        stop_ffmpeg_windows()
+        stop_ffmpeg_windows(error_messages_callback=show_error_messages)
     else:
-        stop_ffmpeg_linux()
+        stop_ffmpeg_linux(error_messages_callback=show_error_messages)
 
-    remove_temp_files("flac")
-    remove_temp_files("wav")
+    remove_temp_files("flac", error_messages_callback=show_error_messages)
+    remove_temp_files("wav", error_messages_callback=show_error_messages)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('source_path', help="File path of the video or audio files to generate subtitles files (use wildcard for multiple files or separate them with a space character)", nargs='*')
@@ -876,7 +1081,7 @@ async def main():
     parser.add_argument('-F', '--format', help="Desired subtitle format", default="srt")
     parser.add_argument('-lf', '--list-formats', help="List all supported subtitle formats", action='store_true')
     parser.add_argument('-C', '--concurrency', help="Number of concurrent API requests to make", type=int, default=10)
-    parser.add_argument('-v', '--version', action='version', version='1.2.8')
+    parser.add_argument('-v', '--version', action='version', version=VERSION)
 
     args = parser.parse_args()
 
@@ -940,19 +1145,18 @@ async def main():
 
         widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
         pbar = ProgressBar(widgets=widgets, maxval=100).start()
-
-        wav_converter = WavConverter()
-        wav_converter_partial = partial(wav_converter.convert_async, wav_converter=wav_converter, progress_callback=show_progress)
-        audio_filepath, audio_rate = await asyncio.create_task(wav_converter_partial(media_filepath, progress_callback=show_progress))
+        wav_converter = WavConverter(channels=1, rate=48000, progress_callback=show_progress, error_messages_callback=show_error_messages)
+        wav_converter_partial = partial(wav_converter.convert_async, wav_converter=wav_converter)
+        wav_filepath, sample_rate = await asyncio.create_task(wav_converter_partial(media_filepath))
         pbar.finish()
 
-        region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6)
-        regions = await region_finder(audio_filepath)
+        region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6, error_messages_callback=show_error_messages)
+        regions = await region_finder(wav_filepath)
 
-        flac_converter = FLACConverter(wav_filepath=audio_filepath)
+        flac_converter = FLACConverter(wav_filepath=wav_filepath, error_messages_callback=show_error_messages)
         flac_converter_partial = partial(flac_converter.convert_async, flac_converter=flac_converter)
 
-        recognizer = SpeechRecognizer(language=args.src_language, rate=48000, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw")
+        recognizer = SpeechRecognizer(language=args.src_language, rate=48000, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", error_messages_callback=show_error_messages)
         recognizer_partial = partial(recognizer.get_transcription_async, recognizer=recognizer)
 
         pool = multiprocessing.Pool(args.concurrency)
@@ -980,7 +1184,7 @@ async def main():
                 pool.terminate()
                 pool.close()
                 pool.join()
-                print("Cancelling transcription")
+                print("Cancelling all tasks")
                 return 1
 
             except Exception as e:
@@ -1004,7 +1208,7 @@ async def main():
             base, ext = os.path.splitext(media_filepath)
             subtitle_filepath = "{base}.{format}".format(base=base, format=subtitle_format)
 
-        writer = SubtitleWriter(regions, transcripts, subtitle_format)
+        writer = SubtitleWriter(regions, transcripts, subtitle_format, error_messages_callback=show_error_messages)
         await writer.write(subtitle_filepath)
 
         if do_translate:
@@ -1024,7 +1228,7 @@ async def main():
             widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
             pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
 
-            transcript_translator = SentenceTranslator(src=args.src_language, dst=args.dst_language)
+            transcript_translator = SentenceTranslator(src=args.src_language, dst=args.dst_language, error_messages_callback=show_error_messages)
             transcript_translator_partial = partial(transcript_translator.translate_async)
 
             translated_subtitles = []
@@ -1034,7 +1238,7 @@ async def main():
             pbar.finish()
 
             translated_subtitle_filepath = subtitle_filepath[ :-4] + '.translated.' + subtitle_format
-            translation_writer = SubtitleWriter(created_regions, translated_subtitles, subtitle_format)
+            translation_writer = SubtitleWriter(created_regions, translated_subtitles, subtitle_format, error_messages_callback=show_error_messages)
             await translation_writer.write(translated_subtitle_filepath)
 
         print('Done.')
@@ -1044,16 +1248,17 @@ async def main():
         else:
             print("Subtitles file created at               : {}".format(subtitle_filepath))
 
-    if sys.platform == "win32":
-        stop_ffmpeg_windows()
-    else:
-        stop_ffmpeg_linux()
-
     pool.close()
     pool.join()
 
-    remove_temp_files("flac")
-    remove_temp_files("wav")
+    if sys.platform == "win32":
+        stop_ffmpeg_windows(error_messages_callback=show_error_messages)
+    else:
+        stop_ffmpeg_linux(error_messages_callback=show_error_messages)
+
+    remove_temp_files("flac", error_messages_callback=show_error_messages)
+    remove_temp_files("wav", error_messages_callback=show_error_messages)
+
 
 if __name__ == '__main__':
     multiprocessing.freeze_support()
