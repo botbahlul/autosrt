@@ -20,12 +20,277 @@ from progressbar import ProgressBar, Percentage, Bar, ETA
 import pysrt
 import six
 # ADDITIONAL IMPORT
-import ffmpeg_progress_yield
-from ffmpeg_progress_yield import FfmpegProgress
+#import ffmpeg_progress_yield
+#from ffmpeg_progress_yield import FfmpegProgress
 import magic
 from glob import glob
 
-VERSION = "1.2.9"
+VERSION = "1.2.11"
+
+#======================================================== ffmpeg_progress_yield ========================================================#
+
+
+import re
+#import subprocess
+from typing import Any, Callable, Iterator, List, Optional, Union
+
+
+def to_ms(**kwargs: Union[float, int, str]) -> int:
+    hour = int(kwargs.get("hour", 0))
+    minute = int(kwargs.get("min", 0))
+    sec = int(kwargs.get("sec", 0))
+    ms = int(kwargs.get("ms", 0))
+
+    return (hour * 60 * 60 * 1000) + (minute * 60 * 1000) + (sec * 1000) + ms
+
+
+def _probe_duration(cmd: List[str]) -> Optional[int]:
+    '''
+    Get the duration via ffprobe from input media file
+    in case ffmpeg was run with loglevel=error.
+
+    Args:
+        cmd (List[str]): A list of command line elements, e.g. ["ffmpeg", "-i", ...]
+
+    Returns:
+        Optional[int]: The duration in milliseconds.
+    '''
+
+    def _get_file_name(cmd: List[str]) -> Optional[str]:
+        try:
+            idx = cmd.index("-i")
+            return cmd[idx + 1]
+        except ValueError:
+            return None
+
+    file_name = _get_file_name(cmd)
+    if file_name is None:
+        return None
+
+    try:
+        if sys.platform == "win32":
+            output = subprocess.check_output(
+                [
+                    "ffprobe",
+                    "-loglevel",
+                    "-1",
+                    "-hide_banner",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    file_name,
+                ],
+                universal_newlines=True,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        else:
+            output = subprocess.check_output(
+                [
+                    "ffprobe",
+                    "-loglevel",
+                    "-1",
+                    "-hide_banner",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    file_name,
+                ],
+                universal_newlines=True,
+            )
+
+        return int(float(output.strip()) * 1000)
+    except Exception:
+        # TODO: add logging
+        return None
+
+
+def _uses_error_loglevel(cmd: List[str]) -> bool:
+    try:
+        idx = cmd.index("-loglevel")
+        if cmd[idx + 1] == "error":
+            return True
+        else:
+            return False
+    except ValueError:
+        return False
+
+
+class FfmpegProgress:
+    DUR_REGEX = re.compile(
+        r"Duration: (?P<hour>\d{2}):(?P<min>\d{2}):(?P<sec>\d{2})\.(?P<ms>\d{2})"
+    )
+    TIME_REGEX = re.compile(
+        r"out_time=(?P<hour>\d{2}):(?P<min>\d{2}):(?P<sec>\d{2})\.(?P<ms>\d{2})"
+    )
+
+    def __init__(self, cmd: List[str], dry_run: bool = False) -> None:
+        '''Initialize the FfmpegProgress class.
+
+        Args:
+            cmd (List[str]): A list of command line elements, e.g. ["ffmpeg", "-i", ...]
+            dry_run (bool, optional): Only show what would be done. Defaults to False.
+        '''
+        self.cmd = cmd
+        self.stderr: Union[str, None] = None
+        self.dry_run = dry_run
+        self.process: Any = None
+        self.stderr_callback: Union[Callable[[str], None], None] = None
+        if sys.platform == "win32":
+            self.base_popen_kwargs = {
+                "stdin": subprocess.PIPE,  # Apply stdin isolation by creating separate pipe.
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.STDOUT,
+                "universal_newlines": False,
+                "shell": True,
+            }
+        else:
+            self.base_popen_kwargs = {
+                "stdin": subprocess.PIPE,  # Apply stdin isolation by creating separate pipe.
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.STDOUT,
+                "universal_newlines": False,
+            }
+
+    def set_stderr_callback(self, callback: Callable[[str], None]) -> None:
+        '''
+        Set a callback function to be called on stderr output.
+        The callback function must accept a single string argument.
+        Note that this is called on every line of stderr output, so it can be called a lot.
+        Also note that stdout/stderr are joined into one stream, so you might get stdout output in the callback.
+
+        Args:
+            callback (Callable[[str], None]): A callback function that accepts a single string argument.
+        '''
+        if not callable(callback) or len(callback.__code__.co_varnames) != 1:
+            raise ValueError(
+                "Callback must be a function that accepts only one argument"
+            )
+
+        self.stderr_callback = callback
+
+    def run_command_with_progress(
+        self, popen_kwargs=None, duration_override: Union[float, None] = None
+    ) -> Iterator[int]:
+        '''
+        Run an ffmpeg command, trying to capture the process output and calculate
+        the duration / progress.
+        Yields the progress in percent.
+
+        Args:
+            popen_kwargs (dict, optional): A dict to specify extra arguments to the popen call, e.g. { creationflags: CREATE_NO_WINDOW }
+            duration_override (float, optional): The duration in seconds. If not specified, it will be calculated from the ffmpeg output.
+
+        Raises:
+            RuntimeError: If the command fails, an exception is raised.
+
+        Yields:
+            Iterator[int]: A generator that yields the progress in percent.
+        '''
+        if self.dry_run:
+            return self.cmd
+
+        total_dur: Union[None, int] = None
+        if _uses_error_loglevel(self.cmd):
+            total_dur = _probe_duration(self.cmd)
+
+        cmd_with_progress = (
+            [self.cmd[0]] + ["-progress", "-", "-nostats"] + self.cmd[1:]
+        )
+
+        stderr = []
+        base_popen_kwargs = self.base_popen_kwargs.copy()
+        if popen_kwargs is not None:
+            base_popen_kwargs.update(popen_kwargs)
+
+        if sys.platform == "wind32":
+            self.process = subprocess.Popen(
+                cmd_with_progress,
+                **base_popen_kwargs,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )  # type: ignore
+        else:
+            self.process = subprocess.Popen(
+                cmd_with_progress,
+                **base_popen_kwargs,
+            )  # type: ignore
+
+        yield 0
+
+        while True:
+            if self.process.stdout is None:
+                continue
+
+            stderr_line = (
+                self.process.stdout.readline().decode("utf-8", errors="replace").strip()
+            )
+
+            if self.stderr_callback:
+                self.stderr_callback(stderr_line)
+
+            if stderr_line == '' and self.process.poll() is not None:
+                break
+
+            stderr.append(stderr_line.strip())
+
+            self.stderr = "\n".join(stderr)
+
+            if total_dur is None:
+                total_dur_match = self.DUR_REGEX.search(stderr_line)
+                if total_dur_match:
+                    total_dur = to_ms(**total_dur_match.groupdict())
+                    continue
+                elif duration_override is not None:
+                    # use the override (should apply in the first loop)
+                    total_dur = int(duration_override * 1000)
+                    continue
+
+            if total_dur:
+                progress_time = FfmpegProgress.TIME_REGEX.search(stderr_line)
+                if progress_time:
+                    elapsed_time = to_ms(**progress_time.groupdict())
+                    yield int(elapsed_time * 100/ total_dur)
+
+        if self.process is None or self.process.returncode != 0:
+            #print(self.process)
+            #print(self.process.returncode)
+            _pretty_stderr = "\n".join(stderr)
+            raise RuntimeError(f"Error running command {self.cmd}: {_pretty_stderr}")
+
+        yield 100
+        self.process = None
+
+    def quit_gracefully(self) -> None:
+        '''
+        Quit the ffmpeg process by sending 'q'
+
+        Raises:
+            RuntimeError: If no process is found.
+        '''
+        if self.process is None:
+            raise RuntimeError("No process found. Did you run the command?")
+
+        self.process.communicate(input=b"q")
+        self.process.kill()
+        self.process = None
+
+    def quit(self) -> None:
+        '''
+        Quit the ffmpeg process by sending SIGKILL.
+
+        Raises:
+            RuntimeError: If no process is found.
+        '''
+        if self.process is None:
+            raise RuntimeError("No process found. Did you run the command?")
+
+        self.process.kill()
+        self.process = None
+
+
+#=======================================================================================================================================#
+
 
 def stop_ffmpeg_windows(error_messages_callback=None):
     try:
@@ -102,18 +367,39 @@ def remove_temp_files(extension, error_messages_callback=None):
         return
 
 
-def is_same_language(src, dst):
-    return src.split("-")[0] == dst.split("-")[0]
+def is_same_language(src, dst, error_messages_callback=None):
+    try:
+        return src.split("-")[0] == dst.split("-")[0]
+    except Exception as e:
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print(e)
+        return
 
 
-def is_video_file(file_path):
-    mime_type = magic.from_file(file_path, mime=True)
-    return mime_type.startswith('video/')
+def is_video_file(file_path, error_messages_callback=None):
+    try:
+        mime_type = magic.from_file(file_path, mime=True)
+        return mime_type.startswith('video/')
+    except Exception as e:
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print(e)
+        return
 
 
-def is_audio_file(file_path):
-    mime_type = magic.from_file(file_path, mime=True)
-    return mime_type.startswith('audio/')
+def is_audio_file(file_path, error_messages_callback=None):
+    try:
+        mime_type = magic.from_file(file_path, mime=True)
+        return mime_type.startswith('audio/')
+    except Exception as e:
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print(e)
+        return
 
 
 class Language:
@@ -602,7 +888,7 @@ class WavConverter:
             for progress in ff.run_command_with_progress():
                 percentage = progress
                 if self.progress_callback:
-                    self.progress_callback(percentage)
+                    self.progress_callback(media_filepath, percentage)
             temp.close()
         
             return temp.name, self.rate
@@ -620,26 +906,6 @@ class WavConverter:
             else:
                 print(e)
             return
-
-
-# DEFINE progress_callback FUNCTION TO SHOW ffmpeg PROGRESS
-# IF WE'RE IN pysimplegui ENVIRONMENT WE CAN DO :
-#def show_progress(percentage):
-    #global main_window
-    #main_window.write_event_value('-UPDATE-PROGRESS-', percentage) AND HANDLE THAT EVENT IN pysimplegui MAIN LOOP
-# IF WE'RE IN console ENVIRONMENT WE CAN DO :
-#def show_progress(percentage):
-    #global pbar
-    #pbar.update(percentage)
-
-# DEFINE error_messages_callback FUNCTION TO SHOW ERROR MESSAGES
-# IF WE'RE IN pysimplegui ENVIRONMENT WE CAN DO :
-#def show_error_messages(messages):
-    #global main_window
-    #main_window.write_event_value('-EXCEPTION-', messages) AND HANDLE THAT EVENT IN pysimplegui MAIN LOOP
-# IF WE'RE IN console ENVIRONMENT WE CAN DO :
-#def show_error_messages(messages):
-    #print(messages)
 
 
 class SpeechRegionFinder:
@@ -1059,7 +1325,7 @@ class SRTFileReader:
             return
 
 
-def show_progress(progress):
+def show_progress(media_filepath, progress):
     global pbar
     pbar.update(progress)
 
@@ -1111,7 +1377,7 @@ def main():
         if not args.dst_language in language.name_of_code.keys():
             print("Destination language is not supported. Run with --list-languages to see all supported languages.")
             return 1
-        if not is_same_language(args.src_language, args.dst_language):
+        if not is_same_language(args.src_language, args.dst_language, error_messages_callback=show_error_messages):
             do_translate = True
         else:
             do_translate = False
@@ -1136,36 +1402,40 @@ def main():
     arg_filepaths = []
 
     for arg in args.source_path:
-        arg_filepaths += glob(arg)
-
-    for arg in arg_filepaths:
-        if os.path.isfile(arg):
-            if is_video_file(arg) or is_audio_file(arg):
-                media_filepaths.append(arg)
-            else:
-                print("{} is not a valid video or audio file".format(arg))
+        if not os.sep in arg:
+            argpath = os.path.join(os.getcwd(),arg)
         else:
-            print("{} is not exist".format(arg))
+            argpath = arg
+        arg_filepaths += glob(argpath)
+
+    for argpath in arg_filepaths:
+        if os.path.isfile(argpath):
+            if is_video_file(argpath, error_messages_callback=show_error_messages) or is_audio_file(argpath, error_messages_callback=show_error_messages):
+                media_filepaths.append(argpath)
+            else:
+                print("{} is not a valid video or audio file".format(argpath))
+        else:
+            print("{} is not exist".format(argpath))
 
     pool = multiprocessing.Pool(args.concurrency)
 
     for media_filepath in media_filepaths:
         print("Processing {} :".format(media_filepath))
 
-        widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
-        pbar = ProgressBar(widgets=widgets, maxval=100).start()
-        wav_converter = WavConverter(progress_callback=show_progress, error_messages_callback=show_error_messages)
-        wav_filepath, sample_rate = wav_converter(media_filepath)
-        pbar.finish()
+        try:
+            widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
+            pbar = ProgressBar(widgets=widgets, maxval=100).start()
+            wav_converter = WavConverter(progress_callback=show_progress, error_messages_callback=show_error_messages)
+            wav_filepath, sample_rate = wav_converter(media_filepath)
+            pbar.finish()
 
-        region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6, error_messages_callback=show_error_messages)
-        regions = region_finder(wav_filepath)
+            region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6, error_messages_callback=show_error_messages)
+            regions = region_finder(wav_filepath)
 
-        converter = FLACConverter(wav_filepath=wav_filepath, error_messages_callback=show_error_messages)
-        recognizer = SpeechRecognizer(language=args.src_language, rate=sample_rate, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", error_messages_callback=show_error_messages)
+            converter = FLACConverter(wav_filepath=wav_filepath, error_messages_callback=show_error_messages)
+            recognizer = SpeechRecognizer(language=args.src_language, rate=sample_rate, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", error_messages_callback=show_error_messages)
 
-        if regions:
-            try:
+            if regions:
                 widgets = ["Converting speech regions to FLAC files : ", Percentage(), ' ', Bar(), ' ', ETA()]
                 pbar = ProgressBar(widgets=widgets, maxval=len(regions)).start()
                 extracted_regions = []
@@ -1182,75 +1452,94 @@ def main():
                     pbar.update(i)
                 pbar.finish()
 
-            except KeyboardInterrupt:
-                pbar.finish()
-                pool.terminate()
-                pool.close()
-                pool.join()
-                print("Cancelling all tasks")
-                return 1
+                subtitle_filepath = args.output
+                subtitle_format = args.format
+                # HANDLE IF THERE ARE SOME TYPOS IN SUBTITLE FILENAME
+                if subtitle_filepath:
+                    subtitle_file_base, subtitle_file_ext = os.path.splitext(args.output)
+                    if not subtitle_file_ext:
+                        subtitle_filepath = "{base}.{format}".format(base=subtitle_file_base, format=subtitle_format)
+                    else:
+                        subtitle_filepath = args.output
+                else:
+                    base, ext = os.path.splitext(media_filepath)
+                    subtitle_filepath = "{base}.{format}".format(base=base, format=subtitle_format)
 
-            except Exception as e:
+                writer = SubtitleWriter(regions, transcripts, subtitle_format, error_messages_callback=show_error_messages)
+                writer.write(subtitle_filepath)
+
+                if do_translate:
+                    # CONCURRENT TRANSLATION USING class SentenceTranslator(object)
+                    # NO NEED TO TRANSLATE ALL transcript IN transcripts
+                    # BECAUSE SOME region IN regions MAY JUST HAVE transcript WITH EMPTY STRING
+                    # JUST TRANSLATE ALREADY CREATED subtitles ENTRIES FROM timed_subtitles
+                    timed_subtitles = writer.timed_subtitles
+                    created_regions = []
+                    created_subtitles = []
+                    for entry in timed_subtitles:
+                        created_regions.append(entry[0])
+                        created_subtitles.append(entry[1])
+
+                    prompt = "Translating from %8s to %8s   : " %(args.src_language, args.dst_language)
+                    widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
+                    pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
+
+                    transcript_translator = SentenceTranslator(src=args.src_language, dst=args.dst_language, error_messages_callback=show_error_messages)
+
+                    translated_subtitles = []
+                    for i, translated_subtitle in enumerate(pool.imap(transcript_translator, created_subtitles)):
+                        translated_subtitles.append(translated_subtitle)
+                        pbar.update(i)
+                    pbar.finish()
+
+                    translated_subtitle_filepath = subtitle_filepath[ :-4] + '.translated.' + subtitle_format
+                    translation_writer = SubtitleWriter(created_regions, translated_subtitles, subtitle_format, error_messages_callback=show_error_messages)
+                    translation_writer.write(translated_subtitle_filepath)
+
+                print('Done.')
+                if do_translate:
+                    print("Original subtitles file created at      : {}".format(subtitle_filepath))
+                    print('Translated subtitles file created at    : {}' .format(translated_subtitle_filepath))
+                else:
+                    print("Subtitles file created at               : {}".format(subtitle_filepath))
+
+        except KeyboardInterrupt:
+            pbar.finish()
+            pool.terminate()
+            pool.close()
+            pool.join()
+            print("Cancelling all tasks")
+
+            if sys.platform == "win32":
+                stop_ffmpeg_windows(error_messages_callback=show_error_messages)
+            else:
+                stop_ffmpeg_linux(error_messages_callback=show_error_messages)
+
+            remove_temp_files("flac")
+            remove_temp_files("wav")
+            return 1
+
+        except Exception as e:
+            if not KeyboardInterrupt in e:
                 pbar.finish()
                 pool.terminate()
                 pool.close()
                 pool.join()
                 print(e)
+
+                if sys.platform == "win32":
+                    stop_ffmpeg_windows(error_messages_callback=show_error_messages)
+                else:
+                    stop_ffmpeg_linux(error_messages_callback=show_error_messages)
+
+                remove_temp_files("flac")
+                remove_temp_files("wav")
                 return 1
 
-        subtitle_filepath = args.output
-        subtitle_format = args.format
-        # HANDLE IF THERE ARE SOME TYPOS IN SUBTITLE FILENAME
-        if subtitle_filepath:
-            subtitle_file_base, subtitle_file_ext = os.path.splitext(args.output)
-            if not subtitle_file_ext:
-                subtitle_filepath = "{base}.{format}".format(base=subtitle_file_base, format=subtitle_format)
-            else:
-                subtitle_filepath = args.output
-        else:
-            base, ext = os.path.splitext(media_filepath)
-            subtitle_filepath = "{base}.{format}".format(base=base, format=subtitle_format)
-
-        writer = SubtitleWriter(regions, transcripts, subtitle_format, error_messages_callback=show_error_messages)
-        writer.write(subtitle_filepath)
-
-        if do_translate:
-            # CONCURRENT TRANSLATION USING class SentenceTranslator(object)
-            # NO NEED TO TRANSLATE ALL transcript IN transcripts
-            # BECAUSE SOME region IN regions MAY JUST HAVE transcript WITH EMPTY STRING
-            # JUST TRANSLATE ALREADY CREATED subtitles ENTRIES FROM timed_subtitles
-            timed_subtitles = writer.timed_subtitles
-            created_regions = []
-            created_subtitles = []
-            for entry in timed_subtitles:
-                created_regions.append(entry[0])
-                created_subtitles.append(entry[1])
-
-            prompt = "Translating from %8s to %8s   : " %(args.src_language, args.dst_language)
-            widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
-            pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
-
-            transcript_translator = SentenceTranslator(src=args.src_language, dst=args.dst_language, error_messages_callback=show_error_messages)
-
-            translated_subtitles = []
-            for i, translated_subtitle in enumerate(pool.imap(transcript_translator, created_subtitles)):
-                translated_subtitles.append(translated_subtitle)
-                pbar.update(i)
-            pbar.finish()
-
-            translated_subtitle_filepath = subtitle_filepath[ :-4] + '.translated.' + subtitle_format
-            translation_writer = SubtitleWriter(created_regions, translated_subtitles, subtitle_format, error_messages_callback=show_error_messages)
-            translation_writer.write(translated_subtitle_filepath)
-
-        print('Done.')
-        if do_translate:
-            print("Original subtitles file created at      : {}".format(subtitle_filepath))
-            print('Translated subtitles file created at    : {}' .format(translated_subtitle_filepath))
-        else:
-            print("Subtitles file created at               : {}".format(subtitle_filepath))
-
-    pool.close()
-    pool.join()
+    if pool:
+        pool.close()
+        pool.join()
+        pool = None
 
     if sys.platform == "win32":
         stop_ffmpeg_windows(error_messages_callback=show_error_messages)
