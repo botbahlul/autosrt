@@ -23,7 +23,6 @@ install_requires=[
         "pysrt>=1.0.1",
         "progressbar2>=3.34.3",
         "six>=1.11.0",
-        "ffmpeg_progress_yield>=0.7.2",
 ]
 
 if sys.platform == "win32":
