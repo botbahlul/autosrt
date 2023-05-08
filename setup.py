@@ -29,9 +29,9 @@ install_requires=[
 if sys.platform == "win32":
     install_requires.append("python-magic>=0.4.27")
     install_requires.append("python_magic_bin>=0.4.14")
-elif sys.platform == "linux":
+if sys.platform == "linux":
     install_requires.append("python-magic>=0.4.27")
-else:
+if not sys.platform == "win32" and not sys.platform == "linux":
     install_requires.append("python-magic>=0.4.27")
 
 setup(
