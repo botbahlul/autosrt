@@ -20,7 +20,7 @@ from progressbar import ProgressBar, Percentage, Bar, ETA
 import pysrt
 import six
 
-VERSION = "1.2.12"
+VERSION = "1.2.16"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#
@@ -396,30 +396,6 @@ def check_file_type(file_path, error_messages_callback=None):
             print(e)
 
     return None
-
-
-def is_video_file(file_path, error_messages_callback=None):
-    try:
-        mime_type = magic.from_file(file_path, mime=True)
-        return mime_type.startswith('video/')
-    except Exception as e:
-        if error_messages_callback:
-            error_messages_callback(e)
-        else:
-            print(e)
-        return
-
-
-def is_audio_file(file_path, error_messages_callback=None):
-    try:
-        mime_type = magic.from_file(file_path, mime=True)
-        return mime_type.startswith('audio/')
-    except Exception as e:
-        if error_messages_callback:
-            error_messages_callback(e)
-        else:
-            print(e)
-        return
 
 
 class Language:

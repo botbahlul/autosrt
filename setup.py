@@ -25,16 +25,6 @@ install_requires=[
         "six>=1.11.0",
 ]
 
-'''
-if sys.platform == "win32":
-    install_requires.append("python-magic>=0.4.27")
-    install_requires.append("python_magic_bin>=0.4.14")
-if sys.platform == "linux":
-    install_requires.append("python-magic>=0.4.27")
-if not sys.platform == "win32" and not sys.platform == "linux":
-    install_requires.append("python-magic>=0.4.27")
-'''
-
 setup(
     name="autosrt",
     version=VERSION,

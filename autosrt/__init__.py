@@ -6,10 +6,12 @@ import sys
 import multiprocessing
 from glob import glob
 from progressbar import ProgressBar, Percentage, Bar, ETA
+import time
+from datetime import datetime, timedelta
 
 from .autosrt import VERSION, Language, WavConverter,  SpeechRegionFinder, FLACConverter, SpeechRecognizer, SentenceTranslator, \
-    SubtitleFormatter,  SubtitleWriter, \
-    stop_ffmpeg_windows, stop_ffmpeg_linux, remove_temp_files, is_same_language, is_video_file, is_audio_file
+    SubtitleFormatter,  SubtitleWriter, stop_ffmpeg_windows, stop_ffmpeg_linux, remove_temp_files, \
+    is_same_language, check_file_type
 
 def show_progress(media_filepath, progress):
     global pbar
@@ -34,7 +36,6 @@ def main():
     parser.add_argument('-S', '--src-language', help="Language code of the audio language spoken in video/audio source_path", default="en")
     parser.add_argument('-D', '--dst-language', help="Desired translation language code for the subtitles", default=None)
     parser.add_argument('-ll', '--list-languages', help="List all supported languages", action='store_true')
-    parser.add_argument('-o', '--output', help="Output file path for subtitles (by default, subtitles are saved in the same directory and named with the source_path base name)")
     parser.add_argument('-F', '--format', help="Desired subtitle format", default="srt")
     parser.add_argument('-lf', '--list-formats', help="List all supported subtitle formats", action='store_true')
     parser.add_argument('-C', '--concurrency', help="Number of concurrent API requests to make", type=int, default=10)
@@ -49,7 +50,7 @@ def main():
         for code, language in sorted(language.name_of_code.items()):
             #print("{code}\t{language}".format(code=code, language=language))
             #print("%8s\t%s" %(code, language))
-            print("%8s : %s" %(code, language))
+            print("%-8s : %s" %(code, language))
         return 0
 
     #if args.src_language not in language.dict:
@@ -85,6 +86,10 @@ def main():
 
     media_filepaths = []
     arg_filepaths = []
+
+    transcribe_start_time = time.time()
+    transcribe_end_time = None
+    transcribe_elapsed_time = None
 
     for arg in args.source_path:
         if not os.sep in arg:
@@ -137,18 +142,9 @@ def main():
                     pbar.update(i)
                 pbar.finish()
 
-                subtitle_filepath = args.output
                 subtitle_format = args.format
-                # HANDLE IF THERE ARE SOME TYPOS IN SUBTITLE FILENAME
-                if subtitle_filepath:
-                    subtitle_file_base, subtitle_file_ext = os.path.splitext(args.output)
-                    if not subtitle_file_ext:
-                        subtitle_filepath = "{base}.{format}".format(base=subtitle_file_base, format=subtitle_format)
-                    else:
-                        subtitle_filepath = args.output
-                else:
-                    base, ext = os.path.splitext(media_filepath)
-                    subtitle_filepath = "{base}.{format}".format(base=base, format=subtitle_format)
+                base, ext = os.path.splitext(media_filepath)
+                subtitle_filepath = "{base}.{format}".format(base=base, format=subtitle_format)
 
                 writer = SubtitleWriter(regions, transcripts, subtitle_format, error_messages_callback=show_error_messages)
                 writer.write(subtitle_filepath)
@@ -187,6 +183,7 @@ def main():
                     print('Translated subtitles file created at    : {}' .format(translated_subtitle_filepath))
                 else:
                     print("Subtitles file created at               : {}".format(subtitle_filepath))
+                print('')
 
         except KeyboardInterrupt:
             pbar.finish()
@@ -225,6 +222,14 @@ def main():
         pool.close()
         pool.join()
         pool = None
+
+    transcribe_end_time = time.time()
+    transcribe_elapsed_time = transcribe_end_time - transcribe_start_time
+    transcribe_elapsed_time_seconds = timedelta(seconds=int(transcribe_elapsed_time))
+    transcribe_elapsed_time_str = str(transcribe_elapsed_time_seconds)
+    hour, minute, second = transcribe_elapsed_time_str.split(":")
+    msg = "Transcribe total time : %s:%s:%s" %(hour.zfill(2), minute, second)
+    print(msg)
 
     if sys.platform == "win32":
         stop_ffmpeg_windows(error_messages_callback=show_error_messages)
