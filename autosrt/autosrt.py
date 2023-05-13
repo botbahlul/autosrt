@@ -19,12 +19,9 @@ except ImportError:
 from progressbar import ProgressBar, Percentage, Bar, ETA
 import pysrt
 import six
-# ADDITIONAL IMPORT
-import ffmpeg_progress_yield
-#from ffmpeg_progress_yield import FfmpegProgress
-import magic
 
-VERSION = "1.2.11"
+VERSION = "1.2.12"
+
 
 #======================================================== ffmpeg_progress_yield ========================================================#
 
@@ -375,6 +372,30 @@ def is_same_language(src, dst, error_messages_callback=None):
         else:
             print(e)
         return
+
+
+def check_file_type(file_path, error_messages_callback=None):
+    try:
+        ffprobe_cmd = ['ffprobe', '-v', 'error', '-show_format', '-show_streams', '-print_format', 'json', file_path]
+        output = subprocess.check_output(ffprobe_cmd).decode('utf-8')
+        data = json.loads(output)
+
+        if 'streams' in data:
+            for stream in data['streams']:
+                if 'codec_type' in stream and stream['codec_type'] == 'audio':
+                    return 'audio'
+                elif 'codec_type' in stream and stream['codec_type'] == 'video':
+                    return 'video'
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        pass
+
+    except Exception as e:
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print(e)
+
+    return None
 
 
 def is_video_file(file_path, error_messages_callback=None):

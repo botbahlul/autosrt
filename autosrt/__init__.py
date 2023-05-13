@@ -95,7 +95,7 @@ def main():
 
     for argpath in arg_filepaths:
         if os.path.isfile(argpath):
-            if is_video_file(argpath, error_messages_callback=show_error_messages) or is_audio_file(argpath, error_messages_callback=show_error_messages):
+            if check_file_type(argpath, error_messages_callback=show_error_messages) == 'video' or check_file_type(argpath, error_messages_callback=show_error_messages) == 'audio':
                 media_filepaths.append(argpath)
             else:
                 print("{} is not a valid video or audio file".format(argpath))
