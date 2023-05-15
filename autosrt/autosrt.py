@@ -20,7 +20,7 @@ from progressbar import ProgressBar, Percentage, Bar, ETA
 import pysrt
 import six
 
-VERSION = "1.2.16"
+VERSION = "1.2.18"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#
@@ -377,7 +377,11 @@ def is_same_language(src, dst, error_messages_callback=None):
 def check_file_type(file_path, error_messages_callback=None):
     try:
         ffprobe_cmd = ['ffprobe', '-v', 'error', '-show_format', '-show_streams', '-print_format', 'json', file_path]
-        output = subprocess.check_output(ffprobe_cmd).decode('utf-8')
+        output = None
+        if sys.platform == "win32":
+            output = subprocess.check_output(ffprobe_cmd, creationflags=subprocess.CREATE_NO_WINDOW).decode('utf-8')
+        else:
+            output = subprocess.check_output(ffprobe_cmd).decode('utf-8')
         data = json.loads(output)
 
         if 'streams' in data:

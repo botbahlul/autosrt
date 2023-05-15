@@ -4,7 +4,7 @@ import argparse
 import os
 import sys
 import multiprocessing
-from glob import glob
+from glob import glob, escape
 from progressbar import ProgressBar, Percentage, Bar, ETA
 import time
 from datetime import datetime, timedelta
@@ -84,30 +84,70 @@ def main():
         parser.print_help(sys.stderr)
         return 1
 
+
+    completed_tasks = 0
     media_filepaths = []
     arg_filepaths = []
+    invalid_media_filepaths = []
+    not_exist_filepaths = []
+    argpath = None
 
-    transcribe_start_time = time.time()
-    transcribe_end_time = None
-    transcribe_elapsed_time = None
+    #for arg in args.source_path:
+    #    print("escape(arg) = %s" %(escape(arg)))
 
-    for arg in args.source_path:
-        if not os.sep in arg:
-            argpath = os.path.join(os.getcwd(),arg)
-        else:
-            argpath = arg
-        arg_filepaths += glob(argpath)
+    args_source_path = args.source_path
+    if sys.platform == "win32":
+        for i in range(len(args.source_path)):
+            if ("[" or "]") in args.source_path[i]:
+                placeholder = "#TEMP#"
+                args_source_path[i] = args.source_path[i].replace("[", placeholder)
+                args_source_path[i] = args_source_path[i].replace("]", "[]]")
+                args_source_path[i] = args_source_path[i].replace(placeholder, "[[]")
+                #print("args_source_path = %s" %(args_source_path))
 
-    for argpath in arg_filepaths:
-        if os.path.isfile(argpath):
-            if check_file_type(argpath, error_messages_callback=show_error_messages) == 'video' or check_file_type(argpath, error_messages_callback=show_error_messages) == 'audio':
-                media_filepaths.append(argpath)
+    for arg in args_source_path:
+        if (not os.path.isfile(arg)) and (not "*" in arg) and (not "?" in arg):
+            not_exist_filepaths.append(arg)
+
+        #print("glob(arg) = %s" %(glob(arg)))
+
+        if not sys.platform == "win32" :
+            arg = escape(arg)
+
+        #print("glob(arg) = %s" %(glob(arg)))
+
+        arg_filepaths += glob(arg)
+
+    if arg_filepaths:
+        for argpath in arg_filepaths:
+            if os.path.isfile(argpath):
+                if check_file_type(argpath, error_messages_callback=show_error_messages) == 'video' or check_file_type(argpath, error_messages_callback=show_error_messages) == 'audio':
+                    media_filepaths.append(argpath)
+                else:
+                    invalid_media_filepaths.append(argpath)
             else:
-                print("{} is not a valid video or audio file".format(argpath))
-        else:
-            print("{} is not exist".format(argpath))
+                not_exist_filepaths.append(argpath)
+
+        if invalid_media_filepaths:
+            for invalid_media_filepath in invalid_media_filepaths:
+                msg = "{} is not valid video or audio files".format(invalid_media_filepath)
+                print(msg)
+
+    #print("not_exist_filepaths = %s" %(not_exist_filepaths))
+
+    if not_exist_filepaths:
+        for not_exist_filepath in not_exist_filepaths:
+            msg = "{} is not exist".format(not_exist_filepath)
+            print(msg)
+
+    elif not arg_filepaths and not not_exist_filepaths:
+        print("No any files matching filenames you typed")
 
     pool = multiprocessing.Pool(args.concurrency)
+
+    transcribe_end_time = None
+    transcribe_elapsed_time = None
+    transcribe_start_time = time.time()
 
     for media_filepath in media_filepaths:
         print("Processing {} :".format(media_filepath))
@@ -161,7 +201,7 @@ def main():
                         created_regions.append(entry[0])
                         created_subtitles.append(entry[1])
 
-                    prompt = "Translating from %8s to %8s   : " %(args.src_language, args.dst_language)
+                    prompt = "Translating from %s to %s   : " %(args.src_language.center(8), args.dst_language.center(8))
                     widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
                     pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
 
@@ -184,6 +224,16 @@ def main():
                 else:
                     print("Subtitles file created at               : {}".format(subtitle_filepath))
                 print('')
+                completed_tasks += 1
+
+                if len(media_filepaths)>0 and completed_tasks == len(media_filepaths):
+                    transcribe_end_time = time.time()
+                    transcribe_elapsed_time = transcribe_end_time - transcribe_start_time
+                    transcribe_elapsed_time_seconds = timedelta(seconds=int(transcribe_elapsed_time))
+                    transcribe_elapsed_time_str = str(transcribe_elapsed_time_seconds)
+                    hour, minute, second = transcribe_elapsed_time_str.split(":")
+                    msg = "Total transcribe time                   : %s:%s:%s" %(hour.zfill(2), minute, second)
+                    print(msg)
 
         except KeyboardInterrupt:
             pbar.finish()
@@ -222,14 +272,6 @@ def main():
         pool.close()
         pool.join()
         pool = None
-
-    transcribe_end_time = time.time()
-    transcribe_elapsed_time = transcribe_end_time - transcribe_start_time
-    transcribe_elapsed_time_seconds = timedelta(seconds=int(transcribe_elapsed_time))
-    transcribe_elapsed_time_str = str(transcribe_elapsed_time_seconds)
-    hour, minute, second = transcribe_elapsed_time_str.split(":")
-    msg = "Transcribe total time : %s:%s:%s" %(hour.zfill(2), minute, second)
-    print(msg)
 
     if sys.platform == "win32":
         stop_ffmpeg_windows(error_messages_callback=show_error_messages)
