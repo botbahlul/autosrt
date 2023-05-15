@@ -20,15 +20,13 @@ from progressbar import ProgressBar, Percentage, Bar, ETA
 import pysrt
 import six
 # ADDITIONAL IMPORT
-#import ffmpeg_progress_yield
-#from ffmpeg_progress_yield import FfmpegProgress
-import magic
-from glob import glob
+from glob import glob, escape
+import time
+from datetime import datetime, timedelta
 
-VERSION = "1.2.11"
+VERSION = "1.2.18"
 
 #======================================================== ffmpeg_progress_yield ========================================================#
-
 
 import re
 #import subprocess
@@ -378,28 +376,32 @@ def is_same_language(src, dst, error_messages_callback=None):
         return
 
 
-def is_video_file(file_path, error_messages_callback=None):
+def check_file_type(file_path, error_messages_callback=None):
     try:
-        mime_type = magic.from_file(file_path, mime=True)
-        return mime_type.startswith('video/')
+        ffprobe_cmd = ['ffprobe', '-v', 'error', '-show_format', '-show_streams', '-print_format', 'json', file_path]
+        output = None
+        if sys.platform == "win32":
+            output = subprocess.check_output(ffprobe_cmd, creationflags=subprocess.CREATE_NO_WINDOW).decode('utf-8')
+        else:
+            output = subprocess.check_output(ffprobe_cmd).decode('utf-8')
+        data = json.loads(output)
+
+        if 'streams' in data:
+            for stream in data['streams']:
+                if 'codec_type' in stream and stream['codec_type'] == 'audio':
+                    return 'audio'
+                elif 'codec_type' in stream and stream['codec_type'] == 'video':
+                    return 'video'
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        pass
+
     except Exception as e:
         if error_messages_callback:
             error_messages_callback(e)
         else:
             print(e)
-        return
 
-
-def is_audio_file(file_path, error_messages_callback=None):
-    try:
-        mime_type = magic.from_file(file_path, mime=True)
-        return mime_type.startswith('audio/')
-    except Exception as e:
-        if error_messages_callback:
-            error_messages_callback(e)
-        else:
-            print(e)
-        return
+    return None
 
 
 class Language:
@@ -1346,11 +1348,10 @@ def main():
     remove_temp_files("wav", error_messages_callback=show_error_messages)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('source_path', help="File path of the video or audio files to generate subtitles files (use wildcard for multiple files or separate them with a space character)", nargs='*')
+    parser.add_argument('source_path', help="Path to the video or audio files to generate subtitles files (use wildcard for multiple files or separate them with a space character e.g. \"file 1.mp4\" \"file 2.mp4\")", nargs='*')
     parser.add_argument('-S', '--src-language', help="Language code of the audio language spoken in video/audio source_path", default="en")
     parser.add_argument('-D', '--dst-language', help="Desired translation language code for the subtitles", default=None)
     parser.add_argument('-ll', '--list-languages', help="List all supported languages", action='store_true')
-    parser.add_argument('-o', '--output', help="Output file path for subtitles (by default, subtitles are saved in the same directory and named with the source_path base name)")
     parser.add_argument('-F', '--format', help="Desired subtitle format", default="srt")
     parser.add_argument('-lf', '--list-formats', help="List all supported subtitle formats", action='store_true')
     parser.add_argument('-C', '--concurrency', help="Number of concurrent API requests to make", type=int, default=10)
@@ -1364,7 +1365,8 @@ def main():
         print("List of supported languages:")
         for code, language in sorted(language.name_of_code.items()):
             #print("{code}\t{language}".format(code=code, language=language))
-            print("%8s : %s" %(code, language))
+            #print("%8s\t%s" %(code, language))
+            print("%-8s : %s" %(code, language))
         return 0
 
     #if args.src_language not in language.dict:
@@ -1398,26 +1400,70 @@ def main():
         parser.print_help(sys.stderr)
         return 1
 
+
+    completed_tasks = 0
     media_filepaths = []
     arg_filepaths = []
+    invalid_media_filepaths = []
+    not_exist_filepaths = []
+    argpath = None
 
-    for arg in args.source_path:
-        if not os.sep in arg:
-            argpath = os.path.join(os.getcwd(),arg)
-        else:
-            argpath = arg
-        arg_filepaths += glob(argpath)
+    #for arg in args.source_path:
+    #    print("escape(arg) = %s" %(escape(arg)))
 
-    for argpath in arg_filepaths:
-        if os.path.isfile(argpath):
-            if is_video_file(argpath, error_messages_callback=show_error_messages) or is_audio_file(argpath, error_messages_callback=show_error_messages):
-                media_filepaths.append(argpath)
-            else:
-                print("{} is not a valid video or audio file".format(argpath))
-        else:
-            print("{} is not exist".format(argpath))
+    args_source_path = args.source_path
+    if sys.platform == "win32":
+        for i in range(len(args.source_path)):
+            if ("[" or "]") in args.source_path[i]:
+                placeholder = "#TEMP#"
+                args_source_path[i] = args.source_path[i].replace("[", placeholder)
+                args_source_path[i] = args_source_path[i].replace("]", "[]]")
+                args_source_path[i] = args_source_path[i].replace(placeholder, "[[]")
+                #print("args_source_path = %s" %(args_source_path))
+
+    for arg in args_source_path:
+        if (not os.path.isfile(arg)) and (not "*" in arg) and (not "?" in arg):
+            not_exist_filepaths.append(arg)
+
+        #print("glob(arg) = %s" %(glob(arg)))
+
+        if not sys.platform == "win32" :
+            arg = escape(arg)
+
+        #print("glob(arg) = %s" %(glob(arg)))
+
+        arg_filepaths += glob(arg)
+
+    if arg_filepaths:
+        for argpath in arg_filepaths:
+            if os.path.isfile(argpath):
+                if check_file_type(argpath, error_messages_callback=show_error_messages) == 'video' or check_file_type(argpath, error_messages_callback=show_error_messages) == 'audio':
+                    media_filepaths.append(argpath)
+                else:
+                    invalid_media_filepaths.append(argpath)
+            #else:
+                #not_exist_filepaths.append(argpath)
+
+        if invalid_media_filepaths:
+            for invalid_media_filepath in invalid_media_filepaths:
+                msg = "{} is not valid video or audio files".format(invalid_media_filepath)
+                print(msg)
+
+    #print("not_exist_filepaths = %s" %(not_exist_filepaths))
+
+    if not_exist_filepaths:
+        for not_exist_filepath in not_exist_filepaths:
+            msg = "{} is not exist".format(not_exist_filepath)
+            print(msg)
+
+    elif not arg_filepaths and not not_exist_filepaths:
+        print("No any files matching filenames you typed")
 
     pool = multiprocessing.Pool(args.concurrency)
+
+    transcribe_end_time = None
+    transcribe_elapsed_time = None
+    transcribe_start_time = time.time()
 
     for media_filepath in media_filepaths:
         print("Processing {} :".format(media_filepath))
@@ -1452,18 +1498,9 @@ def main():
                     pbar.update(i)
                 pbar.finish()
 
-                subtitle_filepath = args.output
                 subtitle_format = args.format
-                # HANDLE IF THERE ARE SOME TYPOS IN SUBTITLE FILENAME
-                if subtitle_filepath:
-                    subtitle_file_base, subtitle_file_ext = os.path.splitext(args.output)
-                    if not subtitle_file_ext:
-                        subtitle_filepath = "{base}.{format}".format(base=subtitle_file_base, format=subtitle_format)
-                    else:
-                        subtitle_filepath = args.output
-                else:
-                    base, ext = os.path.splitext(media_filepath)
-                    subtitle_filepath = "{base}.{format}".format(base=base, format=subtitle_format)
+                base, ext = os.path.splitext(media_filepath)
+                subtitle_filepath = "{base}.{format}".format(base=base, format=subtitle_format)
 
                 writer = SubtitleWriter(regions, transcripts, subtitle_format, error_messages_callback=show_error_messages)
                 writer.write(subtitle_filepath)
@@ -1480,7 +1517,7 @@ def main():
                         created_regions.append(entry[0])
                         created_subtitles.append(entry[1])
 
-                    prompt = "Translating from %8s to %8s   : " %(args.src_language, args.dst_language)
+                    prompt = "Translating from %s to %s   : " %(args.src_language.center(8), args.dst_language.center(8))
                     widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
                     pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
 
@@ -1502,6 +1539,17 @@ def main():
                     print('Translated subtitles file created at    : {}' .format(translated_subtitle_filepath))
                 else:
                     print("Subtitles file created at               : {}".format(subtitle_filepath))
+                print('')
+                completed_tasks += 1
+
+                if len(media_filepaths)>0 and completed_tasks == len(media_filepaths):
+                    transcribe_end_time = time.time()
+                    transcribe_elapsed_time = transcribe_end_time - transcribe_start_time
+                    transcribe_elapsed_time_seconds = timedelta(seconds=int(transcribe_elapsed_time))
+                    transcribe_elapsed_time_str = str(transcribe_elapsed_time_seconds)
+                    hour, minute, second = transcribe_elapsed_time_str.split(":")
+                    msg = "Total transcribe time                   : %s:%s:%s" %(hour.zfill(2), minute, second)
+                    print(msg)
 
         except KeyboardInterrupt:
             pbar.finish()
@@ -1546,8 +1594,8 @@ def main():
     else:
         stop_ffmpeg_linux(error_messages_callback=show_error_messages)
 
-    remove_temp_files("flac", error_messages_callback=show_error_messages)
-    remove_temp_files("wav", error_messages_callback=show_error_messages)
+    remove_temp_files("flac")
+    remove_temp_files("wav")
 
 if __name__ == '__main__':
     multiprocessing.freeze_support()
