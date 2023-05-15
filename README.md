@@ -17,11 +17,6 @@ You can learn how to use them by playing around with those scripts inside test f
 DON'T SAVE YOUR SCRIPT FILENAME WITH THE SAME NAME AS A MODULES NAME THAT YOU USE IN YOUR SCRIPT!
 IT WILL MAKE PYTHON CONFUSED!
 
-If you are on Linux OS don't forget to install libmagic C library to make python_magic modules work properly by typing this at console terminal :
-```
-sudo apt install -y libmagic1
-```
-
 ### Installation
 If you don't have python on your Windows system you can get compiled version from this git release assets
 https://github.com/botbahlul/autosrt/releases
