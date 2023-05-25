@@ -20,7 +20,7 @@ from progressbar import ProgressBar, Percentage, Bar, ETA
 import pysrt
 import six
 
-VERSION = "1.2.19"
+VERSION = "1.2.20"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#

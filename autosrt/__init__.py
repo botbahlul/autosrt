@@ -96,15 +96,15 @@ def main():
 
     args_source_path = args.source_path
 
-    if sys.platform == "win32":
+    if (not ("*" and "?") in str(args_source_path)):
+        for filepath in args_source_path:
+            fpath = Path(filepath)
+            #print("fpath = %s" %fpath)
+            if not os.path.isfile(fpath):
+                not_exist_filepaths.append(filepath)
+                #print(str(fpath) + " is not exist")
 
-        if (not ("*" and "?") in str(args_source_path)):
-            for filepath in args_source_path:
-                fpath = Path(filepath)
-                #print("fpath = %s" %fpath)
-                if not os.path.isfile(fpath):
-                    not_exist_filepaths.append(filepath)
-                    #print(str(fpath) + " is not exist")
+    if sys.platform == "win32":
 
         for i in range(len(args.source_path)):
             if ("[" or "]") in args.source_path[i]:
