@@ -8,6 +8,7 @@ from glob import glob, escape
 from progressbar import ProgressBar, Percentage, Bar, ETA
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from .autosrt import VERSION, Language, WavConverter,  SpeechRegionFinder, FLACConverter, SpeechRecognizer, SentenceTranslator, \
     SubtitleFormatter,  SubtitleWriter, stop_ffmpeg_windows, stop_ffmpeg_linux, remove_temp_files, \
@@ -105,7 +106,6 @@ def main():
                 #print(str(fpath) + " is not exist")
 
     if sys.platform == "win32":
-
         for i in range(len(args.source_path)):
             if ("[" or "]") in args.source_path[i]:
                 placeholder = "#TEMP#"
@@ -115,7 +115,6 @@ def main():
                 #print("args_source_path = %s" %(args_source_path))
 
     for arg in args_source_path:
-
         if not sys.platform == "win32" :
             arg = escape(arg)
 
@@ -144,8 +143,10 @@ def main():
         for not_exist_filepath in not_exist_filepaths:
             msg = "{} is not exist".format(not_exist_filepath)
             print(msg)
+        if (not ("*" and "?") in str(args_source_path)):
+            sys.exit(0)
 
-    elif not arg_filepaths and not not_exist_filepaths:
+    if not arg_filepaths and not not_exist_filepaths:
         print("No any files matching filenames you typed")
         sys.exit(0)
 
