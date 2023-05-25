@@ -25,7 +25,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-VERSION = "1.2.18"
+VERSION = "1.2.20"
 
 #======================================================== ffmpeg_progress_yield ========================================================#
 
@@ -1413,16 +1413,15 @@ def main():
 
     args_source_path = args.source_path
 
+    if (not ("*" and "?") in str(args_source_path)):
+        for filepath in args_source_path:
+            fpath = Path(filepath)
+            #print("fpath = %s" %fpath)
+            if not os.path.isfile(fpath):
+                not_exist_filepaths.append(filepath)
+                #print(str(fpath) + " is not exist")
+
     if sys.platform == "win32":
-
-        if (not ("*" and "?") in str(args_source_path)):
-            for filepath in args_source_path:
-                fpath = Path(filepath)
-                #print("fpath = %s" %fpath)
-                if not os.path.isfile(fpath):
-                    not_exist_filepaths.append(filepath)
-                    #print(str(fpath) + " is not exist")
-
         for i in range(len(args.source_path)):
             if ("[" or "]") in args.source_path[i]:
                 placeholder = "#TEMP#"
@@ -1432,7 +1431,6 @@ def main():
                 #print("args_source_path = %s" %(args_source_path))
 
     for arg in args_source_path:
-
         if not sys.platform == "win32" :
             arg = escape(arg)
 
@@ -1461,8 +1459,10 @@ def main():
         for not_exist_filepath in not_exist_filepaths:
             msg = "{} is not exist".format(not_exist_filepath)
             print(msg)
+        if (not ("*" and "?") in str(args_source_path)):
+            sys.exit(0)
 
-    elif not arg_filepaths and not not_exist_filepaths:
+    if not arg_filepaths and not not_exist_filepaths:
         print("No any files matching filenames you typed")
         sys.exit(0)
 
