@@ -12,6 +12,7 @@ import tempfile
 import wave
 import json
 import requests
+import httpx
 try:
     from json.decoder import JSONDecodeError
 except ImportError:
@@ -25,7 +26,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-VERSION = "1.2.21"
+VERSION = "1.2.22"
 
 #======================================================== ffmpeg_progress_yield ========================================================#
 
@@ -1437,6 +1438,8 @@ def main():
         #print("glob(arg) = %s" %(glob(arg)))
 
         arg_filepaths += glob(arg)
+        #print("arg_filepaths = %s" %(arg_filepaths))
+
 
     if arg_filepaths:
         for argpath in arg_filepaths:
@@ -1456,11 +1459,11 @@ def main():
     #print("not_exist_filepaths = %s" %(not_exist_filepaths))
 
     if not_exist_filepaths:
-        for not_exist_filepath in not_exist_filepaths:
-            msg = "{} is not exist".format(not_exist_filepath)
-            print(msg)
-        if (not ("*" and "?") in str(args_source_path)):
-            sys.exit(0)
+        if (not "*" in str(args_source_path)) and (not "?" in str(args_source_path)):
+            for not_exist_filepath in not_exist_filepaths:
+                msg = "{} is not exist".format(not_exist_filepath)
+                print(msg)
+                sys.exit(0)
 
     if not arg_filepaths and not not_exist_filepaths:
         print("No any files matching filenames you typed")
