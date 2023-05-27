@@ -12,6 +12,7 @@ import tempfile
 import wave
 import json
 import requests
+import httpx
 try:
     from json.decoder import JSONDecodeError
 except ImportError:
@@ -20,7 +21,7 @@ from progressbar import ProgressBar, Percentage, Bar, ETA
 import pysrt
 import six
 
-VERSION = "1.2.21"
+VERSION = "1.2.22"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#
