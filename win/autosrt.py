@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-VERSION = "1.2.22"
+VERSION = "1.2.23"
 
 #======================================================== ffmpeg_progress_yield ========================================================#
 
