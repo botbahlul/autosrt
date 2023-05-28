@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3.8
 from __future__ import unicode_literals
 import sys
 
@@ -21,7 +21,7 @@ long_description = (
 install_requires=[
     "requests>=2.3.0",
     "httpx>=0.24.0",
-    "urllib3 >=1.26.0,<2.0",
+    "urllib3 >=1.26.0,<3.0",
     "pysrt>=1.0.1",
     "six>=1.11.0",
     "progressbar2>=3.34.3",
