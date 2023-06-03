@@ -26,7 +26,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import shlex
 
-VERSION = "1.2.26"
+VERSION = "1.3.0"
 
 #======================================================== ffmpeg_progress_yield ========================================================#
 
@@ -1745,6 +1745,7 @@ def main():
 
     remove_temp_files("flac")
     remove_temp_files("wav")
+
 
 if __name__ == '__main__':
     multiprocessing.freeze_support()
