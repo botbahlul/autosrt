@@ -1,4 +1,3 @@
-#!/usr/bin/env python3.8
 # ORIGINAL AUTOSUB IMPORTS
 from __future__ import absolute_import, print_function, unicode_literals
 import argparse
@@ -22,7 +21,7 @@ import pysrt
 import six
 import shlex
 
-VERSION = "1.2.24"
+VERSION = "1.2.26"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#
