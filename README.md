@@ -1,7 +1,7 @@
 # autosrt <a href="https://pypi.python.org/pypi/autosrt"><img src="https://img.shields.io/pypi/v/autosrt.svg"></img></a>
   
 ### Auto generate subtitle files for any video / audio files
-autosrt is a simple command line tool made with python to auto generate subtitle/closed caption for any video or audio files and translate it automatically for free using a simple unofficial online Google Translate API.
+autosrt is a simple command line tool made with python to auto generate subtitle/closed caption (using free Google Speech Recognition API) for any video or audio files and translate it automatically for free using a simple unofficial online Google Translate API.
 
 This script is a modified version of original autosub made by Anastasis Germanidis at https://github.com/agermanidis/autosub
 
