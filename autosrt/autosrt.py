@@ -21,7 +21,7 @@ import pysrt
 import six
 import shlex
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#
@@ -424,6 +424,7 @@ class Language:
         self.list_codes.append("ca")
         self.list_codes.append("ceb")
         self.list_codes.append("ny")
+        self.list_codes.append("zh")
         self.list_codes.append("zh-CN")
         self.list_codes.append("zh-TW")
         self.list_codes.append("co")
@@ -558,6 +559,7 @@ class Language:
         self.list_names.append("Catalan")
         self.list_names.append("Cebuano")
         self.list_names.append("Chichewa")
+        self.list_names.append("Chinese")
         self.list_names.append("Chinese (Simplified)")
         self.list_names.append("Chinese (Traditional)")
         self.list_names.append("Corsican")
@@ -695,6 +697,7 @@ class Language:
                         'ca': 'Catalan',
                         'ceb': 'Cebuano',
                         'ny': 'Chichewa',
+                        'zh': 'Chinese',
                         'zh-CN': 'Chinese (Simplified)',
                         'zh-TW': 'Chinese (Traditional)',
                         'co': 'Corsican',
