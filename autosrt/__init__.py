@@ -259,7 +259,8 @@ def main():
                     else:
                         subtitle_path = subtitle_filepath
 
-                    subtitle_renderer = MediaSubtitleRenderer(media_ext=ext, subtitle_path=subtitle_path, output_path=rendered_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
+                    ffmpeg_language_code = language.ffmpeg_code_of_code[args.src_language]
+                    subtitle_renderer = MediaSubtitleRenderer(subtitle_path=subtitle_path, language=ffmpeg_language_code, output_path=rendered_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
                     widgets = [f"Rendering subtitles with {media_type}          : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
                     pbar = ProgressBar(widgets=widgets, maxval=100).start()
                     result = subtitle_renderer(media_filepath)

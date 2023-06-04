@@ -21,7 +21,7 @@ import pysrt
 import six
 import shlex
 
-VERSION = "1.3.1"
+VERSION = "1.3.2"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#
@@ -675,8 +675,147 @@ class Language:
         self.list_names.append("Yoruba")
         self.list_names.append("Zulu")
 
+        self.list_ffmpeg_codes = []
+        self.list_ffmpeg_codes.append("afr")  # Afrikaans
+        self.list_ffmpeg_codes.append("alb")  # Albanian
+        self.list_ffmpeg_codes.append("amh")  # Amharic
+        self.list_ffmpeg_codes.append("ara")  # Arabic
+        self.list_ffmpeg_codes.append("hye")  # Armenian
+        self.list_ffmpeg_codes.append("asm")  # Assamese
+        self.list_ffmpeg_codes.append("aym")  # Aymara
+        self.list_ffmpeg_codes.append("aze")  # Azerbaijani
+        self.list_ffmpeg_codes.append("bam")  # Bambara
+        self.list_ffmpeg_codes.append("eus")  # Basque
+        self.list_ffmpeg_codes.append("bel")  # Belarusian
+        self.list_ffmpeg_codes.append("ben")  # Bengali
+        self.list_ffmpeg_codes.append("bho")  # Bhojpuri
+        self.list_ffmpeg_codes.append("bos")  # Bosnian
+        self.list_ffmpeg_codes.append("bul")  # Bulgarian
+        self.list_ffmpeg_codes.append("cat")  # Catalan
+        self.list_ffmpeg_codes.append("ceb")  # Cebuano
+        self.list_ffmpeg_codes.append("nya")  # Chichewa
+        self.list_ffmpeg_codes.append("zho")  # Chinese
+        self.list_ffmpeg_codes.append("zho-CN")  # Chinese (Simplified)
+        self.list_ffmpeg_codes.append("zho-TW")  # Chinese (Traditional)
+        self.list_ffmpeg_codes.append("cos")  # Corsican
+        self.list_ffmpeg_codes.append("hrv")  # Croatian
+        self.list_ffmpeg_codes.append("ces")  # Czech
+        self.list_ffmpeg_codes.append("dan")  # Danish
+        self.list_ffmpeg_codes.append("div")  # Dhivehi
+        self.list_ffmpeg_codes.append("doi")  # Dogri
+        self.list_ffmpeg_codes.append("nld")  # Dutch
+        self.list_ffmpeg_codes.append("eng")  # English
+        self.list_ffmpeg_codes.append("epo")  # Esperanto
+        self.list_ffmpeg_codes.append("est")  # Estonian
+        self.list_ffmpeg_codes.append("ewe")  # Ewe
+        self.list_ffmpeg_codes.append("fil")  # Filipino
+        self.list_ffmpeg_codes.append("fin")  # Finnish
+        self.list_ffmpeg_codes.append("fra")  # French
+        self.list_ffmpeg_codes.append("fry")  # Frisian
+        self.list_ffmpeg_codes.append("glg")  # Galician
+        self.list_ffmpeg_codes.append("kat")  # Georgian
+        self.list_ffmpeg_codes.append("deu")  # German
+        self.list_ffmpeg_codes.append("ell")  # Greek
+        self.list_ffmpeg_codes.append("grn")  # Guarani
+        self.list_ffmpeg_codes.append("guj")  # Gujarati
+        self.list_ffmpeg_codes.append("hat")  # Haitian Creole
+        self.list_ffmpeg_codes.append("hau")  # Hausa
+        self.list_ffmpeg_codes.append("haw")  # Hawaiian
+        self.list_ffmpeg_codes.append("heb")  # Hebrew
+        self.list_ffmpeg_codes.append("hin")  # Hindi
+        self.list_ffmpeg_codes.append("hmn")  # Hmong
+        self.list_ffmpeg_codes.append("hun")  # Hungarian
+        self.list_ffmpeg_codes.append("isl")  # Icelandic
+        self.list_ffmpeg_codes.append("ibo")  # Igbo
+        self.list_ffmpeg_codes.append("ilo")  # Ilocano
+        self.list_ffmpeg_codes.append("ind")  # Indonesian
+        self.list_ffmpeg_codes.append("gle")  # Irish
+        self.list_ffmpeg_codes.append("ita")  # Italian
+        self.list_ffmpeg_codes.append("jpn")  # Japanese
+        self.list_ffmpeg_codes.append("jav")  # Javanese
+        self.list_ffmpeg_codes.append("kan")  # Kannada
+        self.list_ffmpeg_codes.append("kaz")  # Kazakh
+        self.list_ffmpeg_codes.append("khm")  # Khmer
+        self.list_ffmpeg_codes.append("kin")  # Kinyarwanda
+        self.list_ffmpeg_codes.append("kok")  # Konkani
+        self.list_ffmpeg_codes.append("kor")  # Korean
+        self.list_ffmpeg_codes.append("kri")  # Krio
+        self.list_ffmpeg_codes.append("kmr")  # Kurdish (Kurmanji)
+        self.list_ffmpeg_codes.append("ckb")  # Kurdish (Sorani)
+        self.list_ffmpeg_codes.append("kir")  # Kyrgyz
+        self.list_ffmpeg_codes.append("lao")  # Lao
+        self.list_ffmpeg_codes.append("lat")  # Latin
+        self.list_ffmpeg_codes.append("lav")  # Latvian
+        self.list_ffmpeg_codes.append("lin")  # Lingala
+        self.list_ffmpeg_codes.append("lit")  # Lithuanian
+        self.list_ffmpeg_codes.append("lug")  # Luganda
+        self.list_ffmpeg_codes.append("ltz")  # Luxembourgish
+        self.list_ffmpeg_codes.append("mkd")  # Macedonian
+        self.list_ffmpeg_codes.append("mlg")  # Malagasy
+        self.list_ffmpeg_codes.append("msa")  # Malay
+        self.list_ffmpeg_codes.append("mal")  # Malayalam
+        self.list_ffmpeg_codes.append("mlt")  # Maltese
+        self.list_ffmpeg_codes.append("mri")  # Maori
+        self.list_ffmpeg_codes.append("mar")  # Marathi
+        self.list_ffmpeg_codes.append("mni-Mtei")  # Meiteilon (Manipuri)
+        self.list_ffmpeg_codes.append("lus")  # Mizo
+        self.list_ffmpeg_codes.append("mon")  # Mongolian
+        self.list_ffmpeg_codes.append("mya")  # Myanmar (Burmese)
+        self.list_ffmpeg_codes.append("nep")  # Nepali
+        self.list_ffmpeg_codes.append("nor")  # Norwegian
+        self.list_ffmpeg_codes.append("ori")  # Odiya (Oriya)
+        self.list_ffmpeg_codes.append("orm")  # Oromo
+        self.list_ffmpeg_codes.append("pus")  # Pashto
+        self.list_ffmpeg_codes.append("fas")  # Persian
+        self.list_ffmpeg_codes.append("pol")  # Polish
+        self.list_ffmpeg_codes.append("por")  # Portuguese
+        self.list_ffmpeg_codes.append("pan")  # Punjabi
+        self.list_ffmpeg_codes.append("que")  # Quechua
+        self.list_ffmpeg_codes.append("ron")  # Romanian
+        self.list_ffmpeg_codes.append("rus")  # Russian
+        self.list_ffmpeg_codes.append("smo")  # Samoan
+        self.list_ffmpeg_codes.append("san")  # Sanskrit
+        self.list_ffmpeg_codes.append("gla")  # Scots Gaelic
+        self.list_ffmpeg_codes.append("nso")  # Sepedi
+        self.list_ffmpeg_codes.append("srp")  # Serbian
+        self.list_ffmpeg_codes.append("sot")  # Sesotho
+        self.list_ffmpeg_codes.append("sna")  # Shona
+        self.list_ffmpeg_codes.append("snd")  # Sindhi
+        self.list_ffmpeg_codes.append("sin")  # Sinhala
+        self.list_ffmpeg_codes.append("slk")  # Slovak
+        self.list_ffmpeg_codes.append("slv")  # Slovenian
+        self.list_ffmpeg_codes.append("som")  # Somali
+        self.list_ffmpeg_codes.append("spa")  # Spanish
+        self.list_ffmpeg_codes.append("sun")  # Sundanese
+        self.list_ffmpeg_codes.append("swa")  # Swahili
+        self.list_ffmpeg_codes.append("swe")  # Swedish
+        self.list_ffmpeg_codes.append("tgk")  # Tajik
+        self.list_ffmpeg_codes.append("tam")  # Tamil
+        self.list_ffmpeg_codes.append("tat")  # Tatar
+        self.list_ffmpeg_codes.append("tel")  # Telugu
+        self.list_ffmpeg_codes.append("tha")  # Thai
+        self.list_ffmpeg_codes.append("tir")  # Tigrinya
+        self.list_ffmpeg_codes.append("tso")  # Tsonga
+        self.list_ffmpeg_codes.append("tur")  # Turkish
+        self.list_ffmpeg_codes.append("tuk")  # Turkmen
+        self.list_ffmpeg_codes.append("twi")  # Twi (Akan)
+        self.list_ffmpeg_codes.append("ukr")  # Ukrainian
+        self.list_ffmpeg_codes.append("urd")  # Urdu
+        self.list_ffmpeg_codes.append("uig")  # Uyghur
+        self.list_ffmpeg_codes.append("uzb")  # Uzbek
+        self.list_ffmpeg_codes.append("vie")  # Vietnamese
+        self.list_ffmpeg_codes.append("wel")  # Welsh
+        self.list_ffmpeg_codes.append("xho")  # Xhosa
+        self.list_ffmpeg_codes.append("yid")  # Yiddish
+        self.list_ffmpeg_codes.append("yor")  # Yoruba
+        self.list_ffmpeg_codes.append("zul")  # Zulu
+
         self.code_of_name = dict(zip(self.list_names, self.list_codes))
         self.name_of_code = dict(zip(self.list_codes, self.list_names))
+
+        self.ffmpeg_code_of_name = dict(zip(self.list_names, self.list_ffmpeg_codes))
+        self.ffmpeg_code_of_code = dict(zip(self.list_codes, self.list_ffmpeg_codes))
+        self.name_of_ffmpeg_code = dict(zip(self.list_ffmpeg_codes, self.list_names))
 
         self.dict = {
                         'af': 'Afrikaans',
@@ -814,6 +953,142 @@ class Language:
                         'zu': 'Zulu',
                     }
 
+        self.ffmpeg_dict = {
+                                'af': 'afr', # Afrikaans
+                                'sq': 'alb', # Albanian
+                                'am': 'amh', # Amharic
+                                'ar': 'ara', # Arabic
+                                'hy': 'arm', # Armenian
+                                'as': 'asm', # Assamese
+                                'ay': 'aym', # Aymara
+                                'az': 'aze', # Azerbaijani
+                                'bm': 'bam', # Bambara
+                                'eu': 'baq', # Basque
+                                'be': 'bel', # Belarusian
+                                'bn': 'ben', # Bengali
+                                'bho': 'bho', # Bhojpuri
+                                'bs': 'bos', # Bosnian
+                                'bg': 'bul', # Bulgarian
+                                'ca': 'cat', # Catalan
+                                'ceb': 'ceb', # Cebuano
+                                'ny': 'nya', # Chichewa
+                                'zh': 'chi', # Chinese
+                                'zh-CN': 'chi', # Chinese (Simplified)
+                                'zh-TW': 'chi', # Chinese (Traditional)
+                                'co': 'cos', # Corsican
+                                'hr': 'hrv', # Croatian
+                                'cs': 'cze', # Czech
+                                'da': 'dan', # Danish
+                                'dv': 'div', # Dhivehi
+                                'doi': 'doi', # Dogri
+                                'nl': 'dut', # Dutch
+                                'en': 'eng', # English
+                                'eo': 'epo', # Esperanto
+                                'et': 'est', # Estonian
+                                'ee': 'ewe', # Ewe
+                                'fil': 'fil', # Filipino
+                                'fi': 'fin', # Finnish
+                                'fr': 'fre', # French
+                                'fy': 'fry', # Frisian
+                                'gl': 'glg', # Galician
+                                'ka': 'geo', # Georgian
+                                'de': 'ger', # German
+                                'el': 'gre', # Greek
+                                'gn': 'grn', # Guarani
+                                'gu': 'guj', # Gujarati
+                                'ht': 'hat', # Haitian Creole
+                                'ha': 'hau', # Hausa
+                                'haw': 'haw', # Hawaiian
+                                'he': 'heb', # Hebrew
+                                'hi': 'hin', # Hindi
+                                'hmn': 'hmn', # Hmong
+                                'hu': 'hun', # Hungarian
+                                'is': 'ice', # Icelandic
+                                'ig': 'ibo', # Igbo
+                                'ilo': 'ilo', # Ilocano
+                                'id': 'ind', # Indonesian
+                                'ga': 'gle', # Irish
+                                'it': 'ita', # Italian
+                                'ja': 'jpn', # Japanese
+                                'jv': 'jav', # Javanese
+                                'kn': 'kan', # Kannada
+                                'kk': 'kaz', # Kazakh
+                                'km': 'khm', # Khmer
+                                'rw': 'kin', # Kinyarwanda
+                                'gom': 'kok', # Konkani
+                                'ko': 'kor', # Korean
+                                'kri': 'kri', # Krio
+                                'kmr': 'kur', # Kurdish (Kurmanji)
+                                'ckb': 'kur', # Kurdish (Sorani)
+                                'ky': 'kir', # Kyrgyz
+                                'lo': 'lao', # Lao
+                                'la': 'lat', # Latin
+                                'lv': 'lav', # Latvian
+                                'ln': 'lin', # Lingala
+                                'lt': 'lit', # Lithuanian
+                                'lg': 'lug', # Luganda
+                                'lb': 'ltz', # Luxembourgish
+                                'mk': 'mac', # Macedonian
+                                'mg': 'mlg', # Malagasy
+                                'ms': 'may', # Malay
+                                'ml': 'mal', # Malayalam
+                                'mt': 'mlt', # Maltese
+                                'mi': 'mao', # Maori
+                                'mr': 'mar', # Marathi
+                                'mni-Mtei': 'mni', # Meiteilon (Manipuri)
+                                'lus': 'lus', # Mizo
+                                'mn': 'mon', # Mongolian
+                                'my': 'bur', # Myanmar (Burmese)
+                                'ne': 'nep', # Nepali
+                                'no': 'nor', # Norwegian
+                                'or': 'ori', # Odiya (Oriya)
+                                'om': 'orm', # Oromo
+                                'ps': 'pus', # Pashto
+                                'fa': 'per', # Persian
+                                'pl': 'pol', # Polish
+                                'pt': 'por', # Portuguese
+                                'pa': 'pan', # Punjabi
+                                'qu': 'que', # Quechua
+                                'ro': 'rum', # Romanian
+                                'ru': 'rus', # Russian
+                                'sm': 'smo', # Samoan
+                                'sa': 'san', # Sanskrit
+                                'gd': 'gla', # Scots Gaelic
+                                'nso': 'nso', # Sepedi
+                                'sr': 'srp', # Serbian
+                                'st': 'sot', # Sesotho
+                                'sn': 'sna', # Shona
+                                'sd': 'snd', # Sindhi
+                                'si': 'sin', # Sinhala
+                                'sk': 'slo', # Slovak
+                                'sl': 'slv', # Slovenian
+                                'so': 'som', # Somali
+                                'es': 'spa', # Spanish
+                                'su': 'sun', # Sundanese
+                                'sw': 'swa', # Swahili
+                                'sv': 'swe', # Swedish
+                                'tg': 'tgk', # Tajik
+                                'ta': 'tam', # Tamil
+                                'tt': 'tat', # Tatar
+                                'te': 'tel', # Telugu
+                                'th': 'tha', # Thai
+                                'ti': 'tir', # Tigrinya
+                                'ts': 'tso', # Tsonga
+                                'tr': 'tur', # Turkish
+                                'tk': 'tuk', # Turkmen
+                                'tw': 'twi', # Twi (Akan)
+                                'uk': 'ukr', # Ukrainian
+                                'ur': 'urd', # Urdu
+                                'ug': 'uig', # Uyghur
+                                'uz': 'uzb', # Uzbek
+                                'vi': 'vie', # Vietnamese
+                                'cy': 'wel', # Welsh
+                                'xh': 'xho', # Xhosa
+                                'yi': 'yid', # Yiddish
+                                'yo': 'yor', # Yoruba
+                                'zu': 'zul', # Zulu
+                           }
+
     def get_name(self, get_code):
         return self.dict.get(get_code.lower(), "")
 
@@ -822,6 +1097,9 @@ class Language:
             if lang.lower() == language.lower():
                 return get_code
         return ""
+
+    def get_ffmpeg_code(self, get_code):
+        return self.ffmpeg_dict.get(get_code.lower(), "")
 
 
 class WavConverter:
