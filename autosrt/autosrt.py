@@ -21,7 +21,7 @@ import pysrt
 import six
 import shlex
 
-VERSION = "1.3.2"
+VERSION = "1.3.3"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#
@@ -1661,9 +1661,9 @@ class MediaSubtitleRenderer:
             return "ffmpeg.exe"
         return None
 
-    def __init__(self, media_ext=None, subtitle_path=None, output_path=None, progress_callback=None, error_messages_callback=None):
-        self.media_ext = media_ext
+    def __init__(self, subtitle_path=None, language="eng", output_path=None, progress_callback=None, error_messages_callback=None):
         self.subtitle_path = subtitle_path
+        self.language = language
         self.output_path = output_path
         self.progress_callback = progress_callback
         self.error_messages_callback = error_messages_callback
@@ -1696,9 +1696,17 @@ class MediaSubtitleRenderer:
                                 "ffmpeg",
                                 "-y",
                                 "-i", media_filepath,
-                                "-vf", f"subtitles={shlex.quote(self.subtitle_path)}",
-                                self.output_path
+                                "-sub_charenc", "UTF-8",
+                                "-i", self.subtitle_path,
+                                "-c:v", "copy",
+                                "-c:a", "copy",
+                                "-scodec", "mov_text",
+                                "-metadata:s:s:0",
+                                f"language={shlex.quote(self.language)}",
+                                "-f", "mp4",
+                                "-y", self.output_path
                              ]
+
 
             ff = FfmpegProgress(ffmpeg_command)
             percentage = 0
