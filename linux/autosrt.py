@@ -26,7 +26,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import shlex
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 
 #======================================================== ffmpeg_progress_yield ========================================================#
 
