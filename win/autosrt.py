@@ -26,9 +26,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import shlex
 
-VERSION = "1.3.2"
+VERSION = "1.3.3"
+
 
 #======================================================== ffmpeg_progress_yield ========================================================#
+
 
 import re
 #import subprocess
@@ -1670,24 +1672,6 @@ class MediaSubtitleRenderer:
                 raise Exception("Dependency not found: ffmpeg")
 
         try:
-            '''
-            ffmpeg_command = [
-                                "ffmpeg",
-                                "-y",
-                                "-i", media_filepath,
-                                "-vf", f"subtitles={shlex.quote(self.subtitle_path)}",
-                                "-c:a",
-                                "copy",
-                                "-c:v",
-                                "libx264",
-                                "-crf",
-                                "23",
-                                "-preset",
-                                "veryslow",
-                                self.output_path
-                             ]
-            '''
-
             ffmpeg_command = [
                                 "ffmpeg",
                                 "-y",
