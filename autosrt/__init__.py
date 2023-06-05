@@ -8,10 +8,33 @@ from progressbar import ProgressBar, Percentage, Bar, ETA
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+import subprocess
 
 from .autosrt import VERSION, Language, WavConverter,  SpeechRegionFinder, FLACConverter, SpeechRecognizer, SentenceTranslator, \
     SubtitleFormatter,  SubtitleWriter, MediaSubtitleRenderer, stop_ffmpeg_windows, stop_ffmpeg_linux, remove_temp_files, \
     is_same_language, check_file_type
+
+def has_subtitles(media_filepath):
+    if "\\" in media_filepath:
+        media_filepath = media_filepath.replace("\\", "/")
+
+    ffmpeg_cmd = [
+        "ffmpeg",
+        "-y",
+        "-i", media_filepath,
+        "-map", "0:s:0",
+        "-f", "srt",
+        "-"
+    ]
+
+    result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+    #print(result.stdout)
+    #print(result.stderr)
+
+    if result.stdout:
+        return True  # Subtitles detected
+    else:
+        return False  # No subtitles detected
 
 def show_progress(media_filepath, progress):
     global pbar
@@ -172,7 +195,7 @@ def main():
     rendered_media_filepath = None
 
     for media_filepath in media_filepaths:
-        if ".rendered." in str(media_filepath):
+        if has_subtitles(media_filepath):
             media_filepaths.remove(media_filepath)
 
     for media_filepath in media_filepaths:

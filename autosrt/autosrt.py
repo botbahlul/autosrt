@@ -21,7 +21,7 @@ import pysrt
 import six
 import shlex
 
-VERSION = "1.3.3"
+VERSION = "1.3.4"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#
