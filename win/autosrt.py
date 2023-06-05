@@ -26,7 +26,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import shlex
 
-VERSION = "1.3.3"
+VERSION = "1.3.4"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#
@@ -1715,6 +1715,29 @@ class MediaSubtitleRenderer:
             return
 
 
+def has_subtitles(media_filepath):
+    if "\\" in media_filepath:
+        media_filepath = media_filepath.replace("\\", "/")
+
+    ffmpeg_cmd = [
+        "ffmpeg",
+        "-y",
+        "-i", media_filepath,
+        "-map", "0:s:0",
+        "-f", "srt",
+        "-"
+    ]
+
+    result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+    #print(result.stdout)
+    #print(result.stderr)
+
+    if result.stdout:
+        return True  # Subtitles detected
+    else:
+        return False  # No subtitles detected
+
+
 def show_progress(media_filepath, progress):
     global pbar
     pbar.update(progress)
@@ -1876,8 +1899,9 @@ def main():
     rendered_media_filepath = None
 
     for media_filepath in media_filepaths:
-        if ".rendered." in str(media_filepath):
+        if has_subtitles(media_filepath):
             media_filepaths.remove(media_filepath)
+
 
     for media_filepath in media_filepaths:
         print("Processing {}".format(media_filepath))
