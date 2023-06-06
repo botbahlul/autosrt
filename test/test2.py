@@ -5,7 +5,7 @@ from progressbar import ProgressBar, Percentage, Bar, ETA
 from autosrt import Language, WavConverter,  SpeechRegionFinder, FLACConverter, SpeechRecognizer, SentenceTranslator, \
     SubtitleFormatter,  SubtitleWriter
 
-def show_progress(percentage):
+def show_progress(media_filepath, percentage):
     global pbar
     pbar.update(percentage)
 

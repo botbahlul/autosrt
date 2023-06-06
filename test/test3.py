@@ -1,4 +1,3 @@
-#!/usr/bin/env python3.8
 from __future__ import absolute_import, print_function, unicode_literals
 import argparse
 import os
@@ -8,18 +7,19 @@ from glob import glob
 from progressbar import ProgressBar, Percentage, Bar, ETA
 
 from autosrt import VERSION, Language, WavConverter,  SpeechRegionFinder, FLACConverter, SpeechRecognizer, SentenceTranslator, \
-    SubtitleFormatter,  SubtitleWriter, \
-    stop_ffmpeg_windows, stop_ffmpeg_linux, remove_temp_files, is_same_language, is_video_file, is_audio_file
+    SubtitleFormatter,  SubtitleWriter, MediaSubtitleEmbedder, stop_ffmpeg_windows, stop_ffmpeg_linux, remove_temp_files, \
+    is_same_language, check_file_type, has_subtitles
 
-def show_progress(progress):
+def show_progress(media_filepath, progress):
     global pbar
+    print("media_filepath = {}".format(media_filepath))
     pbar.update(progress)
 
 def show_error_messages(messages):
     print(messages)
 
 def main():
-    global pbar
+    global pbar, media_filepath
 
     if sys.platform == "win32":
         stop_ffmpeg_windows(error_messages_callback=show_error_messages)
@@ -111,7 +111,7 @@ def main():
         regions = region_finder(wav_filepath)
 
         converter = FLACConverter(wav_filepath=wav_filepath, error_messages_callback=show_error_messages)
-        recognizer = SpeechRecognizer(language=args.src_language, rate=sample_rate, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", error_messages_callback=show_error_messages)
+        recognizer = SpeechRecognizer(language=args.src_language, rate=sample_rate, error_messages_callback=show_error_messages)
 
         pool = multiprocessing.Pool(args.concurrency)
 

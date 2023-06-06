@@ -7,7 +7,7 @@ from autosrt import Language, WavConverter,  SpeechRegionFinder, FLACConverter, 
     SubtitleFormatter,  SubtitleWriter
 
 # CREATE A progress_callback FUNCTION TO SHOW PROGRESS WHEN CONVERT TO A TEMPORARY WAV FILE
-def show_progress(progress):
+def show_progress(media_filepath, progress):
    global pbar
    pbar.update(progress)
 
@@ -88,6 +88,7 @@ def main():
     #wav_filepath, sample_rate = wav_converter(media_filepath)
 
     # CONVERT WITH SHOWING THE PROGRESS
+    print("media_filepath = {}".format(media_filepath))
     wav_converter = WavConverter(channels=1, rate=48000, progress_callback=show_progress, error_messages_callback=show_error_messages)
     widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
     pbar = ProgressBar(widgets=widgets, maxval=100).start()
