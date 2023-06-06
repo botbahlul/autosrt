@@ -25,8 +25,9 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 import shlex
+import shutil
 
-VERSION = "1.3.4"
+VERSION = "1.3.5"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#
@@ -380,9 +381,9 @@ def is_same_language(src, dst, error_messages_callback=None):
         return
 
 
-def check_file_type(file_path, error_messages_callback=None):
+def check_file_type(media_filepath, error_messages_callback=None):
     try:
-        ffprobe_cmd = ['ffprobe', '-v', 'error', '-show_format', '-show_streams', '-print_format', 'json', file_path]
+        ffprobe_cmd = ['ffprobe', '-v', 'error', '-show_format', '-show_streams', '-print_format', 'json', media_filepath]
         output = None
         if sys.platform == "win32":
             output = subprocess.check_output(ffprobe_cmd, creationflags=subprocess.CREATE_NO_WINDOW).decode('utf-8')
@@ -1094,24 +1095,21 @@ class Language:
                                 'zu': 'zul', # Zulu
                            }
 
-    def get_name(self, get_code):
-        return self.dict.get(get_code.lower(), "")
+    def get_name(self, code):
+        return self.name_of_code[code]
 
     def get_code(self, language):
-        for get_code, lang in self.dict.items():
-            if lang.lower() == language.lower():
-                return get_code
-        return ""
+        return self.code_of_name[language]
 
-    def get_ffmpeg_code(self, get_code):
-        return self.ffmpeg_dict.get(get_code.lower(), "")
+    def get_ffmpeg_code(self, code):
+        return self.ffmpeg_code_of_code[code]
 
 
 class WavConverter:
     @staticmethod
     def which(program):
-        def is_exe(file_path):
-            return os.path.isfile(file_path) and os.access(file_path, os.X_OK)
+        def is_exe(media_filepath):
+            return os.path.isfile(media_filepath) and os.access(media_filepath, os.X_OK)
         fpath, _ = os.path.split(program)
         if fpath:
             if is_exe(program):
@@ -1561,59 +1559,175 @@ class SubtitleWriter:
             return
 
 
-class SRTFileReader:
-    def __init__(self, srt_file_path, error_messages_callback=None):
-        self.timed_subtitles = self(srt_file_path)
+class SubtitleStreamParser:
+    def __init__(self, error_messages_callback=None):
         self.error_messages_callback = error_messages_callback
+        self._indexes = []
+        self._languages = []
+        self._timed_subtitles = []
+        self._number_of_streams = 0
 
-    @staticmethod
-    def __call__(srt_file_path):
+    def __call__(self, media_filepath):
+        if "\\" in media_filepath:
+            media_filepath = media_filepath.replace("\\", "/")
+        subtitle_streams = self.get_subtitle_streams(media_filepath)
+        subtitle_streams_data = []
+        if subtitle_streams:
+            for subtitle_stream in subtitle_streams:
+                subtitle_stream_index = subtitle_stream['index']
+                subtitle_stream_language = subtitle_stream['language']
+                #print(f"Stream Index: {subtitle_stream_index}, Language: {subtitle_stream_language}")
+                subtitle_streams_data.append((subtitle_stream_index, subtitle_stream_language))
+
+        subtitle_data = []
+        subtitle_contents = []
+
+        for subtitle_stream_index in range(len(subtitle_streams)):
+            index, language = subtitle_streams_data[subtitle_stream_index]
+            self._indexes.append(index)
+            self._languages.append(language)
+            self._timed_subtitles.append(self.get_timed_subtitles(media_filepath, subtitle_stream_index+1))
+            subtitle_data.append((index, language, self.get_timed_subtitles(media_filepath, subtitle_stream_index+1)))
+
+        self._number_of_streams = len(subtitle_data)
+        return subtitle_data
+
+    def get_subtitle_streams(self, media_filepath):
+        ffprobe_cmd = [
+                        'ffprobe',
+                        '-v', 'quiet',
+                        '-print_format', 'json',
+                        '-show_entries', 'stream=index:stream_tags=language',
+                        '-select_streams', 's',
+                        media_filepath
+                      ]
+
         try:
-            """
-            Read SRT formatted subtitle file and return subtitles as list of tuples
-            """
-            timed_subtitles = []
-            with open(srt_file_path, 'r') as srt_file:
-                lines = srt_file.readlines()
-                # Split the subtitle file into subtitle blocks
-                subtitle_blocks = []
-                block = []
-                for line in lines:
-                    if line.strip() == '':
-                        subtitle_blocks.append(block)
-                        block = []
-                    else:
-                        block.append(line.strip())
-                subtitle_blocks.append(block)
+            result = subprocess.run(ffprobe_cmd, capture_output=True, text=True)
+            output = result.stdout
 
-                # Parse each subtitle block and store as tuple in timed_subtitles list
-                for block in subtitle_blocks:
-                    if block:
-                        # Extract start and end times from subtitle block
-                        start_time_str, end_time_str = block[1].split(' --> ')
-                        time_format = '%H:%M:%S,%f'
-                        start_time_time_delta = datetime.strptime(start_time_str, time_format) - datetime.strptime('00:00:00,000', time_format)
-                        start_time_total_seconds = start_time_time_delta.total_seconds()
-                        end_time_time_delta = datetime.strptime(end_time_str, time_format) - datetime.strptime('00:00:00,000', time_format)
-                        end_time_total_seconds = end_time_time_delta.total_seconds()
-                        # Extract subtitle text from subtitle block
-                        subtitle = ' '.join(block[2:])
-                        timed_subtitles.append(((start_time_total_seconds, end_time_total_seconds), subtitle))
-                return timed_subtitles
+            streams = json.loads(output)['streams']
 
-        except KeyboardInterrupt:
+            subtitle_streams = []
+            empty_stream_exists = False
+
+            for index, stream in enumerate(streams, start=1):
+                language = stream['tags'].get('language')
+                subtitle_streams.append({'index': index, 'language': language})
+
+                # Check if 'No subtitles' stream exists
+                if language == 'No subtitles':
+                    empty_stream_exists = True
+
+            # Append 'No subtitles' stream if it exists
+            if not empty_stream_exists:
+                subtitle_streams.append({'index': len(streams) + 1, 'language': 'No subtitles'})
+
+            return subtitle_streams
+
+        except FileNotFoundError:
             if self.error_messages_callback:
-                self.error_messages_callback("Cancelling all tasks")
+                msg = 'ffprobe not found. Make sure it is installed and added to the system PATH.'
+                self.error_messages_callback(msg)
             else:
-                print("Cancelling all tasks")
-            return
+                print(msg)
+            return None
 
         except Exception as e:
             if self.error_messages_callback:
                 self.error_messages_callback(e)
             else:
                 print(e)
+            return None
+
+    def get_timed_subtitles(self, media_filepath, subtitle_stream_index):
+        ffmpeg_cmd = [
+                        'ffmpeg',
+                        '-i', media_filepath,
+                        '-map', f'0:s:{subtitle_stream_index-1}',
+                        '-f', 'srt',
+                        '-'
+                     ]
+
+        try:
+            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+            output = result.stdout
+			#print(output)
+
+            timed_subtitles = []
+            subtitle_data = []
+            lines = output.strip().split('\n')
+            #print(lines)
+            subtitles = []
+            subtitle = None
+            subtitle_blocks = []
+            block = []
+            for line in lines:
+                if line.strip() == '':
+                    subtitle_blocks.append(block)
+                    block = []
+                else:
+                    block.append(line.strip())
+            subtitle_blocks.append(block)
+
+            # Parse each subtitle block and store as tuple in timed_subtitles list
+            for block in subtitle_blocks:
+                if block:
+                    # Extract start and end times from subtitle block
+                    start_time_str, end_time_str = block[1].split(' --> ')
+                    time_format = '%H:%M:%S,%f'
+                    start_time_time_delta = datetime.strptime(start_time_str, time_format) - datetime.strptime('00:00:00,000', time_format)
+                    start_time_total_seconds = start_time_time_delta.total_seconds()
+                    end_time_time_delta = datetime.strptime(end_time_str, time_format) - datetime.strptime('00:00:00,000', time_format)
+                    end_time_total_seconds = end_time_time_delta.total_seconds()
+                    # Extract subtitle text from subtitle block
+                    subtitle = ' '.join(block[2:])
+                    timed_subtitles.append(((start_time_total_seconds, end_time_total_seconds), subtitle))
+            return timed_subtitles
+
+        except FileNotFoundError:
+            if self.error_messages_callback:
+                msg = 'ffmpeg not found. Make sure it is installed and added to the system PATH.'
+                self.error_messages_callback(msg)
+            else:
+                print(msg)
+            return None
+
+        except Exception as e:
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+            return None
+
+    def number_of_streams(self):
+        return self._number_of_streams
+
+    def indexes(self):
+        return self._indexes
+
+    def languages(self):
+        return self._languages
+
+    def timed_subtitles(self):
+        return self._timed_subtitles
+
+    def index_of_language(self, language):
+        for i in range(self.number_of_streams()):
+            if self.languages()[i] == language:
+                return i+1
             return
+
+    def language_of_index(self, index):
+        return self.languages()[index-1]
+
+    def timed_subtitles_of_index(self, index):
+        return self.timed_subtitles()[index-1]
+
+    def timed_subtitles_of_language(self, language):
+        for i in range(self.number_of_streams()):
+            if self.languages()[i] == language:
+                return self.timed_subtitles()[i]
 
 
 class MediaSubtitleRenderer:
@@ -1715,27 +1829,369 @@ class MediaSubtitleRenderer:
             return
 
 
-def has_subtitles(media_filepath):
-    if "\\" in media_filepath:
-        media_filepath = media_filepath.replace("\\", "/")
+class MediaSubtitleEmbedder:
+    @staticmethod
+    def which(program):
+        def is_exe(media_filepath):
+            return os.path.isfile(media_filepath) and os.access(media_filepath, os.X_OK)
+        fpath, _ = os.path.split(program)
+        if fpath:
+            if is_exe(program):
+                return program
+        else:
+            for path in os.environ["PATH"].split(os.pathsep):
+                path = path.strip('"')
+                exe_file = os.path.join(path, program)
+                if is_exe(exe_file):
+                    return exe_file
+        return None
 
-    ffmpeg_cmd = [
-        "ffmpeg",
-        "-y",
-        "-i", media_filepath,
-        "-map", "0:s:0",
-        "-f", "srt",
-        "-"
+    @staticmethod
+    def ffmpeg_check():
+        if WavConverter.which("ffmpeg"):
+            return "ffmpeg"
+        if WavConverter.which("ffmpeg.exe"):
+            return "ffmpeg.exe"
+        return None
+
+    def __init__(self, subtitle_path=None, language="eng", output_path=None, progress_callback=None, error_messages_callback=None):
+        self.subtitle_path = subtitle_path
+        self.language = language
+        self.output_path = output_path
+        self.progress_callback = progress_callback
+        self.error_messages_callback = error_messages_callback
+
+    def get_existing_subtitle_language(self, media_filepath):
+        # Run ffprobe to get stream information
+        command = [
+                    'ffprobe',
+                    '-v', 'quiet',
+                    '-of', 'json',
+                    '-show_entries',
+                    'format:stream',
+                    media_filepath
+                  ]
+
+        output = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, universal_newlines=True)
+        metadata = json.loads(output.stdout)
+        streams = metadata['streams']
+
+        # Find the subtitle stream with language metadata
+        subtitle_languages = []
+        for stream in streams:
+            if stream['codec_type'] == 'subtitle' and 'tags' in stream and 'language' in stream['tags']:
+                language = stream['tags']['language']
+                subtitle_languages.append(language)
+
+        return subtitle_languages
+
+    def __call__(self, media_filepath):
+        if "\\" in media_filepath:
+            media_filepath = media_filepath.replace("\\", "/")
+
+        if "\\" in self.subtitle_path:
+            self.subtitle_path = self.subtitle_path.replace("\\", "/")
+
+        if "\\" in self.output_path:
+            self.output_path = self.output_path.replace("\\", "/")
+
+        if not os.path.isfile(media_filepath):
+            if self.error_messages_callback:
+                self.error_messages_callback("The given file does not exist: {0}".format(media_filepath))
+            else:
+                print("The given file does not exist: {0}".format(media_filepath))
+                raise Exception("Invalid file: {0}".format(media_filepath))
+        if not self.ffmpeg_check():
+            if self.error_messages_callback:
+                self.error_messages_callback("ffmpeg: Executable not found on machine.")
+            else:
+                print("ffmpeg: Executable not found on machine.")
+                raise Exception("Dependency not found: ffmpeg")
+
+        try:
+            existing_languages = self.get_existing_subtitle_language(media_filepath)
+            print("existing_languages = {}".format(existing_languages))
+            if self.language in existing_languages:
+                msg = (f"'{self.language}' subtitle stream already existed in {media_filepath}")
+                if self.error_messages_callback:
+                    self.error_messages_callback(msg)
+                else:
+                    print(msg)
+                return
+
+            else:
+                # Determine the next available subtitle index
+                next_index = len(existing_languages)
+
+                ffmpeg_command = [
+                                    'ffmpeg',
+                                    '-y',
+                                    '-i', media_filepath,
+                                    '-sub_charenc', 'UTF-8',
+                                    '-i', self.subtitle_path,
+                                    '-c:v', 'copy',
+                                    '-c:a', 'copy',
+                                    '-scodec', 'mov_text',
+                                    '-metadata:s:s:' + str(next_index), f'language={shlex.quote(self.language)}',
+                                    '-map', '0',
+                                    '-map', '1',
+                                    self.output_path
+                                 ]
+
+                ff = FfmpegProgress(ffmpeg_command)
+                percentage = 0
+                for progress in ff.run_command_with_progress():
+                    percentage = progress
+                    if self.progress_callback:
+                        self.progress_callback(media_filepath, percentage)
+
+                if os.path.isfile(self.output_path):
+                    return self.output_path
+                else:
+                    return None
+
+        except KeyboardInterrupt:
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
+            return
+
+        except Exception as e:
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+            return
+
+
+class SRTFileReader:
+    def __init__(self, srt_file_path, error_messages_callback=None):
+        self.timed_subtitles = self(srt_file_path)
+        self.error_messages_callback = error_messages_callback
+
+    @staticmethod
+    def __call__(srt_file_path):
+        try:
+            """
+            Read SRT formatted subtitle file and return subtitles as list of tuples
+            """
+            timed_subtitles = []
+            with open(srt_file_path, 'r') as srt_file:
+                lines = srt_file.readlines()
+                # Split the subtitle file into subtitle blocks
+                subtitle_blocks = []
+                block = []
+                for line in lines:
+                    if line.strip() == '':
+                        subtitle_blocks.append(block)
+                        block = []
+                    else:
+                        block.append(line.strip())
+                subtitle_blocks.append(block)
+
+                # Parse each subtitle block and store as tuple in timed_subtitles list
+                for block in subtitle_blocks:
+                    if block:
+                        # Extract start and end times from subtitle block
+                        start_time_str, end_time_str = block[1].split(' --> ')
+                        time_format = '%H:%M:%S,%f'
+                        start_time_time_delta = datetime.strptime(start_time_str, time_format) - datetime.strptime('00:00:00,000', time_format)
+                        start_time_total_seconds = start_time_time_delta.total_seconds()
+                        end_time_time_delta = datetime.strptime(end_time_str, time_format) - datetime.strptime('00:00:00,000', time_format)
+                        end_time_total_seconds = end_time_time_delta.total_seconds()
+                        # Extract subtitle text from subtitle block
+                        subtitle = ' '.join(block[2:])
+                        timed_subtitles.append(((start_time_total_seconds, end_time_total_seconds), subtitle))
+                return timed_subtitles
+
+        except KeyboardInterrupt:
+            if self.error_messages_callback:
+                self.error_messages_callback("Cancelling all tasks")
+            else:
+                print("Cancelling all tasks")
+            return
+
+        except Exception as e:
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+            return
+
+
+def has_subtitles(media_filepath, error_messages_callback=None):
+    try:
+        if "\\" in media_filepath:
+            media_filepath = media_filepath.replace("\\", "/")
+
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",
+            "-i", media_filepath,
+            "-map", "0:s:0",
+            "-f", "srt",
+            "-"
+        ]
+
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+
+        if result.stdout:
+            return True  # Subtitles detected
+        else:
+            return False  # No subtitles detected
+
+    except Exception as e:
+        if self.error_messages_callback:
+            self.error_messages_callback(e)
+        else:
+            print(e)
+        return False
+
+
+def get_existing_subtitle_language(media_path):
+    # Run ffprobe to get stream information
+    command = [
+                'ffprobe',
+                '-v', 'quiet',
+                '-of', 'json',
+                '-show_entries',
+                'format:stream',
+                media_path
     ]
 
-    result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
-    #print(result.stdout)
-    #print(result.stderr)
+    output = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, universal_newlines=True)
+    metadata = json.loads(output.stdout)
+    streams = metadata['streams']
 
-    if result.stdout:
-        return True  # Subtitles detected
-    else:
-        return False  # No subtitles detected
+    # Find the subtitle stream with language metadata
+    subtitle_languages = []
+    for stream in streams:
+        if stream['codec_type'] == 'subtitle' and 'tags' in stream and 'language' in stream['tags']:
+            language = stream['tags']['language']
+            subtitle_languages.append(language)
+
+    return subtitle_languages
+
+
+def render_subtitle_to_media(media_filepath, media_type, media_ext, subtitle_path, output_path, error_messages_callback=None):
+
+    try:
+        if "\\" in media_filepath:
+            media_filepath = media_filepath.replace("\\", "/")
+
+        if "\\" in subtitle_path:
+            subtitle_path = subtitle_path.replace("\\", "/")
+
+        if "\\" in output_path:
+            output_path = output_path.replace("\\", "/")
+
+        ffprobe_command = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{media_filepath}"'
+        ffprobe_process = subprocess.Popen(ffprobe_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        total_duration = float(ffprobe_process.stdout.read().decode().strip())
+
+        ffmpeg_command = f'ffmpeg -y -i "{media_filepath}" -vf "subtitles={shlex.quote(subtitle_path)}" "{output_path}"'
+
+        widgets = [f"Rendering subtitles with {media_type} : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
+        pbar = ProgressBar(widgets=widgets, maxval=100).start()
+        percentage = 0
+
+        if sys.platform == "win32":
+            process = subprocess.Popen(ffmpeg_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+        else:
+            process = subprocess.Popen(ffmpeg_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+
+        for line in process.stdout:
+            if "time=" in line:
+                #print(line)
+                time_str = line.split("time=")[1].split()[0]
+                #print("time_str = %s" %time_str)
+                current_duration = sum(float(x) * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
+                #print("current_duration = %s" %current_duration)
+                if current_duration>0:
+                    percentage = int(current_duration*100/total_duration)
+                    #print("percentage = {}%".format(percentage))
+                    pbar.update(percentage)
+        pbar.finish()
+        return output_path
+
+    except Exception as e:
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print(e)
+        return
+
+
+def embed_subtitle_to_media(media_filepath, media_type, subtitle_path, language_code, output_path, error_messages_callback=None):
+    try:
+        if "\\" in media_filepath:
+            media_filepath = media_filepath.replace("\\", "/")
+
+        if "\\" in subtitle_path:
+            subtitle_path = subtitle_path.replace("\\", "/")
+
+        if "\\" in output_path:
+            output_path = output_path.replace("\\", "/")
+
+        existing_languages = get_existing_subtitle_language(media_filepath)
+        if language_code in existing_languages:
+            #print(f"'{language_code}' subtitle stream already existed in {media_filepath}")
+            return
+
+        else:
+            # Determine the next available subtitle index
+            next_index = len(existing_languages)
+
+            ffprobe_command = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{media_filepath}"'
+            ffprobe_process = subprocess.Popen(ffprobe_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            total_duration = float(ffprobe_process.stdout.read().decode().strip())
+
+            ffmpeg_command = [
+                                'ffmpeg',
+                                '-y',
+                                '-i', media_filepath,
+                                '-sub_charenc', 'UTF-8',
+                                '-i', subtitle_path,
+                                '-c:v', 'copy',
+                                '-c:a', 'copy',
+                                '-scodec', 'mov_text',
+                                '-metadata:s:s:' + str(next_index), f'language={shlex.quote(language_code)}',
+                                '-map', '0',
+                                '-map', '1',
+                                output_path
+                             ]
+
+            widgets = [f"Embeding \'{language_code}\' subtitles into {media_type}     : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
+            pbar = ProgressBar(widgets=widgets, maxval=100).start()
+            percentage = 0
+
+            if sys.platform == "win32":
+                process = subprocess.Popen(ffmpeg_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+            else:
+                process = subprocess.Popen(ffmpeg_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+
+            for line in process.stdout:
+                if "time=" in line:
+                    #print(line)
+                    time_str = line.split("time=")[1].split()[0]
+                    #print("time_str = %s" %time_str)
+                    current_duration = sum(float(x) * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
+                    #print("current_duration = %s" %current_duration)
+                    if current_duration>0:
+                        percentage = int(current_duration*100/total_duration)
+                        #print("percentage = {}%".format(percentage))
+                        pbar.update(percentage)
+            pbar.finish()
+            return output_path
+        return
+
+    except Exception as e:
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print(e)
+        return None
 
 
 def show_progress(media_filepath, progress):
@@ -1766,7 +2222,7 @@ def main():
     parser.add_argument('-F', '--format', help="Desired subtitle format", default="srt")
     parser.add_argument('-lf', '--list-formats', help="List all supported subtitle formats", action='store_true')
     parser.add_argument('-C', '--concurrency', help="Number of concurrent API requests to make", type=int, default=10)
-    parser.add_argument('-r', '--render', help="Boolean value (True or False) for render subtitle file into video file", type=bool, default=False)
+    parser.add_argument('-e', '--embed', help="Boolean value (True or False) for embed subtitle file into video file", type=bool, default=False)
     parser.add_argument('-v', '--version', action='version', version=VERSION)
 
     args = parser.parse_args()
@@ -1812,10 +2268,10 @@ def main():
         parser.print_help(sys.stderr)
         return 1
 
-    if str(args.render) == "true":
-        args.render = True
-    if str(args.render) == "false":
-        args.render = False
+    if str(args.embed) == "true":
+        args.embed = True
+    if str(args.embed) == "false":
+        args.embed = False
 
     completed_tasks = 0
     media_filepaths = []
@@ -1896,12 +2352,178 @@ def main():
     transcribe_end_time = None
     transcribe_elapsed_time = None
     transcribe_start_time = time.time()
-    rendered_media_filepath = None
 
-    for media_filepath in media_filepaths:
-        if has_subtitles(media_filepath):
-            media_filepaths.remove(media_filepath)
+    src_subtitle_filepath = None
+    dst_subtitle_filepath = None
+    ffmpeg_src_language_code = None
+    ffmpeg_dst_language_code = None
+    embedded_media_filepath = None
 
+    subtitle_format = args.format
+
+    #print("media_filepaths = {}".format(media_filepaths))
+
+    removed_media_filepaths = []
+
+    print("CHECKING EXISTING SUBTITLES STREAMS")
+    print("===================================")
+
+    if do_translate == False:
+
+        for media_filepath in media_filepaths:
+            ffmpeg_src_language_code = language.ffmpeg_code_of_code[args.src_language]
+            print("Checking existing '{}' subtites streams in {}".format(ffmpeg_src_language_code, media_filepath))
+
+            subtitle_stream_parser = SubtitleStreamParser(error_messages_callback=show_error_messages)
+            subtitle_streams_data = subtitle_stream_parser(media_filepath)
+
+            if subtitle_streams_data and subtitle_streams_data != []:
+
+                src_subtitle_stream_timed_subtitles = subtitle_stream_parser.timed_subtitles_of_language(ffmpeg_src_language_code)
+
+                if ffmpeg_src_language_code in subtitle_stream_parser.languages():
+                    print(f"'{ffmpeg_src_language_code}' subtitle stream already existed in {media_filepath}")
+                    subtitle_stream_regions = []
+                    subtitle_stream_transcripts = []
+                    for entry in src_subtitle_stream_timed_subtitles:
+                        subtitle_stream_regions.append(entry[0])
+                        subtitle_stream_transcripts.append(entry[1])
+                    base, ext = os.path.splitext(media_filepath)
+                    src_subtitle_filepath = "{base}.{src}.{format}".format(base=base, src=args.src_language, format=subtitle_format)
+                    writer = SubtitleWriter(subtitle_stream_regions, subtitle_stream_transcripts, subtitle_format, error_messages_callback=show_error_messages)
+                    print(f"Extracting '{ffmpeg_src_language_code}'subtitle stream as      : {src_subtitle_filepath}")
+                    writer.write(src_subtitle_filepath)
+                    removed_media_filepaths.append(media_filepath)
+
+                else:
+                    print(f"No '{ffmpeg_src_language_code}' subtitle stream found in {media_filepath}")
+
+        print("")
+
+        if removed_media_filepaths:
+            for removed_media_filepath in removed_media_filepaths:
+                media_filepaths.remove(removed_media_filepath)
+
+        if not media_filepaths:
+            print("Nothing else to do, exiting")
+            sys.exit(0)
+
+
+    elif do_translate == True:
+
+        for media_filepath in media_filepaths:
+            ffmpeg_src_language_code = language.ffmpeg_code_of_code[args.src_language]
+            print("Checking existing '{}' subtites streams in {}".format(ffmpeg_src_language_code, media_filepath))
+
+            subtitle_stream_parser = SubtitleStreamParser(error_messages_callback=show_error_messages)
+            subtitle_streams_data = subtitle_stream_parser(media_filepath)
+
+            if subtitle_streams_data and subtitle_streams_data != []:
+
+                src_subtitle_stream_timed_subtitles = subtitle_stream_parser.timed_subtitles_of_language(ffmpeg_src_language_code)
+
+                if ffmpeg_src_language_code in subtitle_stream_parser.languages():
+                    print(f"'{ffmpeg_src_language_code}' subtitle stream already existed in {media_filepath}")
+                    subtitle_stream_regions = []
+                    subtitle_stream_transcripts = []
+                    for entry in src_subtitle_stream_timed_subtitles:
+                        subtitle_stream_regions.append(entry[0])
+                        subtitle_stream_transcripts.append(entry[1])
+                    base, ext = os.path.splitext(media_filepath)
+                    src_subtitle_filepath = "{base}.{src}.{format}".format(base=base, src=args.src_language, format=subtitle_format)
+                    writer = SubtitleWriter(subtitle_stream_regions, subtitle_stream_transcripts, subtitle_format, error_messages_callback=show_error_messages)
+                    print(f"Extracting '{ffmpeg_src_language_code}'subtitle stream as      : {src_subtitle_filepath}")
+                    writer.write(src_subtitle_filepath)
+
+                else:
+                    print(f"No '{ffmpeg_src_language_code}' subtitle stream found in {media_filepath}")
+
+        for media_filepath in media_filepaths:
+            ffmpeg_dst_language_code = language.ffmpeg_code_of_code[args.dst_language]
+            print("Checking existing '{}' subtites streams in {}".format(ffmpeg_dst_language_code, media_filepath))
+
+            subtitle_stream_parser = SubtitleStreamParser(error_messages_callback=show_error_messages)
+            subtitle_streams_data = subtitle_stream_parser(media_filepath)
+
+            if subtitle_streams_data and subtitle_streams_data != []:
+
+                src_subtitle_stream_timed_subtitles = subtitle_stream_parser.timed_subtitles_of_language(ffmpeg_src_language_code)
+                dst_subtitle_stream_timed_subtitles = subtitle_stream_parser.timed_subtitles_of_language(ffmpeg_dst_language_code)
+
+                if ffmpeg_dst_language_code in subtitle_stream_parser.languages():
+                    print(f"'{ffmpeg_dst_language_code}' subtitle stream already existed in {media_filepath}")
+                    subtitle_stream_regions = []
+                    subtitle_stream_transcripts = []
+                    for entry in dst_subtitle_stream_timed_subtitles:
+                        subtitle_stream_regions.append(entry[0])
+                        subtitle_stream_transcripts.append(entry[1])
+                    base, ext = os.path.splitext(media_filepath)
+                    dst_subtitle_filepath = "{base}.{dst}.{format}".format(base=base, dst=args.dst_language, format=subtitle_format)
+                    writer = SubtitleWriter(subtitle_stream_regions, subtitle_stream_transcripts, subtitle_format, error_messages_callback=show_error_messages)
+                    print(f"Extracting '{ffmpeg_dst_language_code}'subtitle stream as      : {dst_subtitle_filepath}")
+                    writer.write(dst_subtitle_filepath)
+                    removed_media_filepaths.append(media_filepath)
+
+                else:
+                    print(f"No '{ffmpeg_dst_language_code}' subtitle stream found in {media_filepath}")
+
+                    if src_subtitle_stream_timed_subtitles and src_subtitle_stream_timed_subtitles != []:
+                        prompt = "Translating from %s to %s   : " %(args.src_language.center(8), args.dst_language.center(8))
+                        widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
+                        pbar = ProgressBar(widgets=widgets, maxval=len(src_subtitle_stream_timed_subtitles)).start()
+
+                        transcript_translator = SentenceTranslator(src=args.src_language, dst=args.dst_language, error_messages_callback=show_error_messages)
+
+                        translated_subtitle_stream_transcripts = []
+                        for i, translated_subtitle_stream_transcript in enumerate(pool.imap(transcript_translator, subtitle_stream_transcripts)):
+                            translated_subtitle_stream_transcripts.append(translated_subtitle_stream_transcript)
+                            pbar.update(i)
+                        pbar.finish()
+
+                        base, ext = os.path.splitext(media_filepath)
+                        dst_subtitle_filepath = "{base}.{dst}.{format}".format(base=base, dst=args.dst_language, format=subtitle_format)
+                        translation_writer = SubtitleWriter(subtitle_stream_regions, translated_subtitle_stream_transcripts, subtitle_format, error_messages_callback=show_error_messages)
+                        translation_writer.write(dst_subtitle_filepath)
+                        print("Translated subtitles file saved as      : {}" .format(dst_subtitle_filepath))
+                        removed_media_filepaths.append(media_filepath)
+
+                    if args.embed and src_subtitle_stream_timed_subtitles and src_subtitle_stream_timed_subtitles != []:
+                        base, ext = os.path.splitext(media_filepath)
+                        tmp_embedded_media_filepath_1 = "{base}.embedded1.{format}".format(base=base, format=ext[1:])
+                        tmp_embedded_media_filepath_2 = "{base}.embedded2.{format}".format(base=base, format=ext[1:])
+                        embedded_media_filepath = "{base}.embedded.{format}".format(base=base, format=ext[1:])
+                        ffmpeg_src_language_code = language.ffmpeg_code_of_code[args.src_language]
+                        ffmpeg_dst_language_code = language.ffmpeg_code_of_code[args.dst_language]
+                        result = embed_subtitle_to_media(media_filepath, media_type, src_subtitle_filepath, ffmpeg_src_language_code, tmp_embedded_media_filepath_1)
+                        if os.path.isfile(tmp_embedded_media_filepath_1):
+                            result = embed_subtitle_to_media(tmp_embedded_media_filepath_1, media_type, dst_subtitle_filepath, ffmpeg_dst_language_code, tmp_embedded_media_filepath_2)
+                        else:
+                            result = embed_subtitle_to_media(media_filepath, media_type, dst_subtitle_filepath, ffmpeg_dst_language_code, tmp_embedded_media_filepath_2)
+
+                        if os.path.isfile(tmp_embedded_media_filepath_2):
+                            shutil.copy(tmp_embedded_media_filepath_2, embedded_media_filepath)
+                        if os.path.isfile(tmp_embedded_media_filepath_1):
+                            os.remove(tmp_embedded_media_filepath_1)
+                        if os.path.isfile(tmp_embedded_media_filepath_2):
+                            os.remove(tmp_embedded_media_filepath_2)
+                        if os.path.isfile(embedded_media_filepath):
+                            print("Subtitle embedded {} file saved as   : {}".format(media_type, embedded_media_filepath))
+
+        print("")
+
+        if removed_media_filepaths:
+            for removed_media_filepath in removed_media_filepaths:
+                if removed_media_filepath in media_filepaths:
+                    media_filepaths.remove(removed_media_filepath)
+
+        #print("Left media_filepaths = {}".format(media_filepaths))
+        if not media_filepaths:
+            print("Nothing else to do, exiting")
+            sys.exit(0)
+
+
+    print("NO EXISTING SUBTITLES STREAMS FOUND, PERFORMING SPEECH RECOGNITION")
+    print("==================================================================")
 
     for media_filepath in media_filepaths:
         print("Processing {}".format(media_filepath))
@@ -1936,12 +2558,10 @@ def main():
                     pbar.update(i)
                 pbar.finish()
 
-                subtitle_format = args.format
                 base, ext = os.path.splitext(media_filepath)
-                subtitle_filepath = "{base}.{format}".format(base=base, format=subtitle_format)
-
+                src_subtitle_filepath = "{base}.{src}.{format}".format(base=base, src=args.src_language, format=subtitle_format)
                 writer = SubtitleWriter(regions, transcripts, subtitle_format, error_messages_callback=show_error_messages)
-                writer.write(subtitle_filepath)
+                writer.write(src_subtitle_filepath)
 
                 if do_translate:
                     # CONCURRENT TRANSLATION USING class SentenceTranslator(object)
@@ -1967,40 +2587,53 @@ def main():
                         pbar.update(i)
                     pbar.finish()
 
-                    translated_subtitle_filepath = subtitle_filepath[ :-4] + '.translated.' + subtitle_format
+                    base, ext = os.path.splitext(media_filepath)
+                    dst_subtitle_filepath = "{base}.{dst}.{format}".format(base=base, dst=args.dst_language, format=subtitle_format)
                     translation_writer = SubtitleWriter(created_regions, translated_subtitles, subtitle_format, error_messages_callback=show_error_messages)
-                    translation_writer.write(translated_subtitle_filepath)
+                    translation_writer.write(dst_subtitle_filepath)
 
                 if do_translate:
-                    print("Original subtitles file created at      : {}".format(subtitle_filepath))
-                    print("Translated subtitles file created at    : {}" .format(translated_subtitle_filepath))
+                    print("Original subtitles file saved as        : {}".format(src_subtitle_filepath))
+                    print("Translated subtitles file saved as      : {}" .format(dst_subtitle_filepath))
                 else:
-                    print("Subtitles file created at               : {}".format(subtitle_filepath))
+                    print("Subtitles file saved as                 : {}".format(src_subtitle_filepath))
 
-                if args.render:
+                if args.embed:
                     base, ext = os.path.splitext(media_filepath)
-                    rendered_media_filepath = "{base}.rendered.{format}".format(base=base, format=ext[1:])
+                    tmp_embedded_media_filepath_1 = "{base}.embedded1.{format}".format(base=base, format=ext[1:])
+                    tmp_embedded_media_filepath_2 = "{base}.embedded2.{format}".format(base=base, format=ext[1:])
+                    embedded_media_filepath = "{base}.embedded.{format}".format(base=base, format=ext[1:])
 
-                    subtitle_path = None
                     if do_translate:
-                        subtitle_path = translated_subtitle_filepath
+                        ffmpeg_src_language_code = language.ffmpeg_code_of_code[args.src_language]
+                        ffmpeg_dst_language_code = language.ffmpeg_code_of_code[args.dst_language]
+                        result = embed_subtitle_to_media(media_filepath, media_type, src_subtitle_filepath, ffmpeg_src_language_code, tmp_embedded_media_filepath_1)
+                        if os.path.isfile(tmp_embedded_media_filepath_1):
+                            result = embed_subtitle_to_media(tmp_embedded_media_filepath_1, media_type, dst_subtitle_filepath, ffmpeg_dst_language_code, tmp_embedded_media_filepath_2)
+                        else:
+                            result = embed_subtitle_to_media(media_filepath, media_type, dst_subtitle_filepath, ffmpeg_dst_language_code, tmp_embedded_media_filepath_2)
+
+                        if os.path.isfile(tmp_embedded_media_filepath_2):
+                            shutil.copy(tmp_embedded_media_filepath_2, embedded_media_filepath)
+
+                        if os.path.isfile(tmp_embedded_media_filepath_1):
+                            os.remove(tmp_embedded_media_filepath_1)
+                        if os.path.isfile(tmp_embedded_media_filepath_2):
+                            os.remove(tmp_embedded_media_filepath_2)
+
                     else:
-                        subtitle_path = subtitle_filepath
+                        ffmpeg_src_language_code = language.ffmpeg_code_of_code[args.src_language]
+                        result = embed_subtitle_to_media(media_filepath, media_type, src_subtitle_filepath, ffmpeg_src_language_code, tmp_embedded_media_filepath_1)
+                        shutil.copy(tmp_embedded_media_filepath_1, embedded_media_filepath)
+                        os.remove(tmp_embedded_media_filepath_1)
 
-                    ffmpeg_language_code = language.ffmpeg_code_of_code[args.src_language]
-                    subtitle_renderer = MediaSubtitleRenderer(subtitle_path=subtitle_path, language=ffmpeg_language_code, output_path=rendered_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
-                    widgets = [f"Rendering subtitles with {media_type}          : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
-                    pbar = ProgressBar(widgets=widgets, maxval=100).start()
-                    result = subtitle_renderer(media_filepath)
-                    pbar.finish()
+                    if os.path.isfile(embedded_media_filepath):
+                        print("Subtitle embedded {} file saved as   : {}".format(media_type, embedded_media_filepath))
 
-                    if result and os.path.isfile(result):
-                        print("Rendered video created at               : {}".format(rendered_media_filepath))
-
-                if not args.render:
+                if not args.embed:
                     completed_tasks += 1
-                elif args.render:
-                    if rendered_media_filepath and os.path.isfile(rendered_media_filepath):
+                elif args.embed:
+                    if embedded_media_filepath and os.path.isfile(embedded_media_filepath):
                         completed_tasks += 1
 
                 print('')
