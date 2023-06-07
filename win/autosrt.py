@@ -27,7 +27,7 @@ from pathlib import Path
 import shlex
 import shutil
 
-VERSION = "1.3.6"
+VERSION = "1.3.7"
 
 def stop_ffmpeg_windows(error_messages_callback=None):
     try:
@@ -1512,9 +1512,9 @@ class MediaSubtitleRenderer:
 
     @staticmethod
     def ffmpeg_check():
-        if WavConverter.which("ffmpeg"):
+        if MediaSubtitleRenderer.which("ffmpeg"):
             return "ffmpeg"
-        if WavConverter.which("ffmpeg.exe"):
+        if MediaSubtitleRenderer.which("ffmpeg.exe"):
             return "ffmpeg.exe"
         return None
 
@@ -1563,15 +1563,6 @@ class MediaSubtitleRenderer:
                                 "-f", "mp4",
                                 "-y", self.output_path
                              ]
-
-            '''
-            ff = FfmpegProgress(ffmpeg_command)
-            percentage = 0
-            for progress in ff.run_command_with_progress():
-                percentage = progress
-                if self.progress_callback:
-                    self.progress_callback(media_filepath, percentage)
-            '''
 
             ffprobe_command = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{media_filepath}"'
             if sys.platform == "win32":
@@ -1637,9 +1628,9 @@ class MediaSubtitleEmbedder:
 
     @staticmethod
     def ffmpeg_check():
-        if WavConverter.which("ffmpeg"):
+        if MediaSubtitleEmbedder.which("ffmpeg"):
             return "ffmpeg"
-        if WavConverter.which("ffmpeg.exe"):
+        if MediaSubtitleEmbedder.which("ffmpeg.exe"):
             return "ffmpeg.exe"
         return None
 
@@ -1745,7 +1736,7 @@ class MediaSubtitleEmbedder:
                         self.progress_callback(media_filepath, percentage)
                 '''
 
-                # WITHOUT USING 
+                # WITHOUT USING ffmpeg_progress_yield MODULE
                 ffprobe_command = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{media_filepath}"'
                 if sys.platform == "win32":
                     ffprobe_process = subprocess.Popen(ffprobe_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -1770,7 +1761,6 @@ class MediaSubtitleEmbedder:
                             percentage = int(current_duration*100/total_duration)
                             if self.progress_callback:
                                 self.progress_callback(media_filepath, percentage)
-
 
                 if os.path.isfile(self.output_path):
                     return self.output_path
@@ -2033,11 +2023,6 @@ def embed_subtitle_to_media(media_filepath, media_type, subtitle_path, language_
 def show_progress(media_filepath, progress):
     global pbar
     pbar.update(progress)
-
-
-#def show_progress2(media_filepath, progress):
-#    global pbar2
-#    pbar2.update(progress)
 
 
 def show_error_messages(messages):
@@ -2460,6 +2445,7 @@ def main():
                         ffmpeg_dst_language_code = language.ffmpeg_code_of_code[args.dst_language]
 
                         '''
+                        # USING FUNCTION
                         result = embed_subtitle_to_media(media_filepath, media_type, src_subtitle_filepath, ffmpeg_src_language_code, tmp_embedded_media_filepath_1)
                         if os.path.isfile(tmp_embedded_media_filepath_1) and os.path.isfile(dst_subtitle_filepath):
                             result = embed_subtitle_to_media(tmp_embedded_media_filepath_1, media_type, dst_subtitle_filepath, ffmpeg_dst_language_code, tmp_embedded_media_filepath_2)
@@ -2467,6 +2453,7 @@ def main():
                             result = embed_subtitle_to_media(media_filepath, media_type, dst_subtitle_filepath, ffmpeg_dst_language_code, tmp_embedded_media_filepath_2)
                         '''
 
+                        # USING CLASS
                         widgets = [f"Embeding \'{ffmpeg_src_language_code}\' subtitles into {media_type}     : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
                         pbar = ProgressBar(widgets=widgets, maxval=100).start()
                         subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=src_subtitle_filepath, language=ffmpeg_src_language_code, output_path=tmp_embedded_media_filepath_1, progress_callback=show_progress, error_messages_callback=show_error_messages)
