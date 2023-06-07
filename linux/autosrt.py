@@ -27,7 +27,7 @@ from pathlib import Path
 import shlex
 import shutil
 
-VERSION = "1.3.7"
+VERSION = "1.3.8"
 
 def stop_ffmpeg_windows(error_messages_callback=None):
     try:
@@ -1988,7 +1988,7 @@ def embed_subtitle_to_media(media_filepath, media_type, subtitle_path, language_
                                 output_path
                              ]
 
-            widgets = [f"Embeding \'{language_code}\' subtitles into {media_type}     : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
+            widgets = [f"Embedding \'{language_code}\' subtitles into {media_type}     : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
             pbar = ProgressBar(widgets=widgets, maxval=100).start()
             percentage = 0
 
@@ -2454,20 +2454,20 @@ def main():
                         '''
 
                         # USING CLASS
-                        widgets = [f"Embeding \'{ffmpeg_src_language_code}\' subtitles into {media_type}     : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
+                        widgets = [f"Embedding \'{ffmpeg_src_language_code}\' subtitles into {media_type}     : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
                         pbar = ProgressBar(widgets=widgets, maxval=100).start()
                         subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=src_subtitle_filepath, language=ffmpeg_src_language_code, output_path=tmp_embedded_media_filepath_1, progress_callback=show_progress, error_messages_callback=show_error_messages)
                         result = subtitle_embedder(media_filepath)
                         pbar.finish()
 
                         if os.path.isfile(tmp_embedded_media_filepath_1) and os.path.isfile(dst_subtitle_filepath):
-                            widgets = [f"Embeding \'{ffmpeg_dst_language_code}\' subtitles into {media_type}     : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
+                            widgets = [f"Embedding \'{ffmpeg_dst_language_code}\' subtitles into {media_type}     : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
                             pbar = ProgressBar(widgets=widgets, maxval=100).start()
                             subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=dst_subtitle_filepath, language=ffmpeg_dst_language_code, output_path=tmp_embedded_media_filepath_2, progress_callback=show_progress, error_messages_callback=show_error_messages)
                             result = subtitle_embedder(tmp_embedded_media_filepath_1)
                             pbar.finish()
                         elif (not os.path.isfile(tmp_embedded_media_filepath_1)) and os.path.isfile(dst_subtitle_filepath):
-                            widgets = [f"Embeding \'{ffmpeg_dst_language_code}\' subtitles into {media_type}     : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
+                            widgets = [f"Embedding \'{ffmpeg_dst_language_code}\' subtitles into {media_type}     : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
                             pbar = ProgressBar(widgets=widgets, maxval=100).start()
                             subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=dst_subtitle_filepath, language=ffmpeg_dst_language_code, output_path=tmp_embedded_media_filepath_2, progress_callback=show_progress, error_messages_callback=show_error_messages)
                             result = subtitle_embedder(media_filepath)
@@ -2487,7 +2487,7 @@ def main():
 
                         #result = embed_subtitle_to_media(media_filepath, media_type, src_subtitle_filepath, ffmpeg_src_language_code, tmp_embedded_media_filepath_1)
 
-                        widgets = [f"Embeding \'{ffmpeg_src_language_code}\' subtitles into {media_type}     : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
+                        widgets = [f"Embedding \'{ffmpeg_src_language_code}\' subtitles into {media_type}     : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
                         pbar = ProgressBar(widgets=widgets, maxval=100).start()
                         subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=src_subtitle_filepath, language=ffmpeg_src_language_code, output_path=tmp_embedded_media_filepath_1, progress_callback=show_progress, error_messages_callback=show_error_messages)
                         result = subtitle_embedder(media_filepath)
