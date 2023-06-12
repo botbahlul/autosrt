@@ -28,7 +28,7 @@ import shlex
 import shutil
 
 
-VERSION = "1.3.14"
+VERSION = "1.3.15"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#
@@ -2739,8 +2739,17 @@ def main():
                         writer = SubtitleWriter(subtitle_stream_regions, subtitle_stream_transcripts, subtitle_format, error_messages_callback=show_error_messages)
                         print(f"Extracting '{ffmpeg_src_language_code}'subtitle stream as      : {src_subtitle_filepath}")
                         writer.write(src_subtitle_filepath)
+
+                        # no translate process as instructed in command arguments
+
+                        # if args.embed_src is True we can't embed it because dst subtitle stream already exist
+                        if args.embed_src == True and src_subtitle_stream_timed_subtitles and src_subtitle_stream_timed_subtitles != []:
+                            print(f"Can not embed '{ffmpeg_src_language_code}' subtitle stream because it's already existed")
+
+                        # remove media_filepath from transcribe proceed_list because all needed srt files already saved
                         if args.force_recognize == False:
-                            removed_media_filepaths.append(media_filepath)
+                            if media_filepath not in removed_media_filepaths:
+                                removed_media_filepaths.append(media_filepath)
 
                     else:
                         print("Is '%s' subtitle stream exist          : No" %(ffmpeg_src_language_code.center(3)))
@@ -2760,6 +2769,7 @@ def main():
                 msg = "Total running time                      : %s:%s:%s" %(hour.zfill(2), minute, second)
                 print(msg)
                 sys.exit(0)
+
 
         # CHECKING ffmpeg_src_language_code AND ffmpeg_dst_language_code SUBTITLE STREAMS, IF EXISTS WE PRINT IT AND EXTRACT IT
         # IF ONE OF THEM (ffmpeg_src_language_code OR ffmpeg_dst_language_code) NOT EXIST, WE TRANSLATE IT AND THEN EMBED IT
@@ -2841,10 +2851,13 @@ def main():
                             translation_writer = SubtitleWriter(subtitle_stream_regions, translated_subtitle_stream_transcripts, subtitle_format, error_messages_callback=show_error_messages)
                             translation_writer.write(src_subtitle_filepath)
                             print("Translated subtitles file saved as      : {}" .format(src_subtitle_filepath))
-                            if args.force_recognize == False:
-                                removed_media_filepaths.append(media_filepath)
 
-                            # if args.embed_src is True we can't embed it because dst subtitle stream already exist
+                            # remove media_filepath from transcribe proceed_list because all needed srt files already saved
+                            if args.force_recognize == False:
+                                if media_filepath not in removed_media_filepaths:
+                                    removed_media_filepaths.append(media_filepath)
+
+                            # if args.embed_src is True then we embed the translated srt into media_filepath
                             if args.embed_src == True and dst_subtitle_stream_timed_subtitles and dst_subtitle_stream_timed_subtitles != []:
                                 base, ext = os.path.splitext(media_filepath)
                                 tmp_embedded_media_filepath_1 = "{base}.embedded1.{format}".format(base=base, format=ext[1:])
@@ -2863,9 +2876,10 @@ def main():
                                 if os.path.isfile(embedded_media_filepath):
                                     print("Subtitle embedded {} file saved as   : {}".format(media_type, embedded_media_filepath))
 
-                            # if args.embed_dst is True we embed that translated srt into media_filepath
+                            # if args.embed_dst is True we can't embed it because dst subtitle stream already exist
                             if args.embed_dst == True and dst_subtitle_stream_timed_subtitles and dst_subtitle_stream_timed_subtitles != []:
                                 print(f"Can not embed '{ffmpeg_dst_language_code}' subtitle stream because it's already existed")
+
 
                     # ffmpeg_src_language_code subtitle stream = exist,
                     # ffmpeg_dst_language_code subtitle stream = not exist
@@ -2890,8 +2904,11 @@ def main():
                             translation_writer = SubtitleWriter(subtitle_stream_regions, translated_subtitle_stream_transcripts, subtitle_format, error_messages_callback=show_error_messages)
                             translation_writer.write(dst_subtitle_filepath)
                             print("Translated subtitles file saved as      : {}" .format(dst_subtitle_filepath))
+
+                            # remove media_filepath from transcribe proceed_list because all needed srt files already saved
                             if args.force_recognize == False:
-                                removed_media_filepaths.append(media_filepath)
+                                if media_filepath not in removed_media_filepaths:
+                                    removed_media_filepaths.append(media_filepath)
 
                             # if args.embed_src is True we can't embed it because dst subtitle stream already exist
                             if args.embed_src == True and src_subtitle_stream_timed_subtitles and src_subtitle_stream_timed_subtitles != []:
@@ -2921,26 +2938,31 @@ def main():
                     # ffmpeg_src_language_code subtitle stream = exist
                     # remove media_filepath from proceed list
                     elif ffmpeg_dst_language_code in subtitle_stream_parser.languages() and ffmpeg_src_language_code in subtitle_stream_parser.languages():
-                        if args.force_recognize == False:
-                            removed_media_filepaths.append(media_filepath)
 
-                        # no need to translate becouse both languages subtitle files already existed
+                        # remove media_filepath from transcribe proceed_list because all needed srt files already saved
+                        if args.force_recognize == False:
+                            if media_filepath not in removed_media_filepaths:
+                                removed_media_filepaths.append(media_filepath)
+
+                        # no need to translate becouse both languages subtitle files already saved
 
                         # if args.embed_src is True we can't embed it because dst subtitle stream already exist
                         if args.embed_src == True and src_subtitle_stream_timed_subtitles and src_subtitle_stream_timed_subtitles != []:
                             print(f"Can not embed '{ffmpeg_src_language_code}' subtitle stream because it's already existed")
 
-                        # if args.embed_dst is True we embed that translated srt into media_filepath
+                        # if args.embed_dst is True we can't embed it because dst subtitle stream already exist
                         if args.embed_dst == True and dst_subtitle_stream_timed_subtitles and dst_subtitle_stream_timed_subtitles != []:
                             print(f"Can not embed '{ffmpeg_dst_language_code}' subtitle stream because it's already existed")
 
                 print("")
 
+            # modifying  media_filepaths list as transcribe proceed_list (if args.force_recognize is false)
             if removed_media_filepaths:
                 for removed_media_filepath in removed_media_filepaths:
                     if removed_media_filepath in media_filepaths:
                         media_filepaths.remove(removed_media_filepath)
 
+            # nothing to process
             if not media_filepaths:
                 transcribe_end_time = time.time()
                 transcribe_elapsed_time = transcribe_end_time - transcribe_start_time
@@ -2956,6 +2978,7 @@ def main():
     print("=========================================================================================================")
 
     proceed_list = []
+    # if args.force_recognize is true then we need to remove subtitle streams and save it as new media file to proceed with transcribe
     if args.force_recognize == True:
         for media_filepath in media_filepaths:
             base, ext = os.path.splitext(media_filepath)
@@ -2978,10 +3001,13 @@ def main():
 
             print("Subtitle removed {} file saved as    : {}".format(media_type, subtitle_removed_media_filepath))
             print("")
+
+    # if args.force_recognize is false then we just use modified media_filepaths list
     else:
         proceed_list = media_filepaths
 
 
+    # START THE TRANSCRIBE PROCESS
     for media_filepath in proceed_list:
         print("Processing {}".format(media_filepath))
 
