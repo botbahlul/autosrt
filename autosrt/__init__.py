@@ -28,7 +28,7 @@ import shlex
 import shutil
 
 
-VERSION = "1.3.16"
+VERSION = "1.3.17"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#
@@ -3106,9 +3106,9 @@ def main():
                 embedded_media_filepath = None
                 if do_translate == False:
 
-                    if embed_src == True:
+                    if args.embed_src == True:
 
-                        ffmpeg_src_language_code = language.ffmpeg_code_of_code[src]
+                        ffmpeg_src_language_code = language.ffmpeg_code_of_code[args.src_language]
 
                         base, ext = os.path.splitext(media_filepath)
                         src_tmp_embedded_media_filepath = "{base}.{src}.tmp.embedded.{format}".format(base=base, src=ffmpeg_src_language_code, format=ext[1:])
@@ -3139,11 +3139,9 @@ def main():
 
                         '''
                         # USING FUNCTION
-                        result = embed_subtitle_to_media(media_filepath, media_type, src_subtitle_filepath, ffmpeg_src_language_code, src_tmp_embedded_media_filepath)
-                        if os.path.isfile(src_tmp_embedded_media_filepath) and os.path.isfile(dst_subtitle_filepath):
-                            result = embed_subtitle_to_media(src_tmp_embedded_media_filepath, media_type, dst_subtitle_filepath, ffmpeg_dst_language_code, src_dst_tmp_embedded_media_filepath)
-                        else:
-                            result = embed_subtitle_to_media(media_filepath, media_type, dst_subtitle_filepath, ffmpeg_dst_language_code, src_dst_tmp_embedded_media_filepath)
+                        src_tmp_output = embed_subtitle_to_media(media_filepath, media_type, src_subtitle_filepath, ffmpeg_src_language_code, src_tmp_embedded_media_filepath)
+                        if os.path.isfile(src_tmp_output) and os.path.isfile(dst_subtitle_filepath):
+                            src_dst_tmp_output = embed_subtitle_to_media(src_tmp_embedded_media_filepath, media_type, dst_subtitle_filepath, ffmpeg_dst_language_code, src_dst_tmp_embedded_media_filepath)
                         '''
 
                         # USING CLASS
@@ -3152,8 +3150,6 @@ def main():
                         subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=src_subtitle_filepath, language=ffmpeg_src_language_code, output_path=src_tmp_embedded_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
                         src_tmp_output = subtitle_embedder(media_filepath)
                         pbar.finish()
-                        #print(f"result = {result}")
-                        #print(f"os.path.isfile(src_tmp_embedded_media_filepath) = {os.path.isfile(src_tmp_embedded_media_filepath)}")
 
                         if os.path.isfile(src_tmp_output) and os.path.isfile(dst_subtitle_filepath):
                             widgets = [f"Embedding '{ffmpeg_dst_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
@@ -3161,11 +3157,10 @@ def main():
                             subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=dst_subtitle_filepath, language=ffmpeg_dst_language_code, output_path=src_dst_tmp_embedded_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
                             src_dst_tmp_output = subtitle_embedder(src_tmp_output)
                             pbar.finish()
-                            #print(f"os.path.isfile(src_dst_tmp_embedded_media_filepath) = {os.path.isfile(src_dst_tmp_embedded_media_filepath)}")
 
                         if os.path.isfile(src_dst_tmp_output):
                             shutil.copy(src_dst_tmp_output, embedded_media_filepath)
-                            #print("Subtitle embedded {} file saved as   : {}".format(media_type, embedded_media_filepath))
+                            print("Subtitle embedded {} file saved as   : {}".format(media_type, embedded_media_filepath))
                         else:
                             print("Unknown error!")
 
@@ -3176,10 +3171,10 @@ def main():
 
                     elif args.embed_src == True and args.embed_dst == False:
 
-                        ffmpeg_src_language_code = language.ffmpeg_code_of_code[src]
+                        ffmpeg_src_language_code = language.ffmpeg_code_of_code[args.src_language]
 
                         base, ext = os.path.splitext(media_filepath)
-                        src_tmp_embedded_media_filepath = "{base}.{src}.tmp.embedded.{format}".format(base=base, format=ext[1:])
+                        src_tmp_embedded_media_filepath = "{base}.{src}.tmp.embedded.{format}".format(base=base, src=ffmpeg_src_language_code, format=ext[1:])
                         embedded_media_filepath = "{base}.{src}.embedded.{format}".format(base=base, src=ffmpeg_src_language_code, format=ext[1:])
 
                         widgets = [f"Embedding '{ffmpeg_src_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
@@ -3197,7 +3192,7 @@ def main():
 
                     elif args.embed_src == False and args.embed_dst == True:
 
-                        ffmpeg_dst_language_code = language.ffmpeg_code_of_code[dst]
+                        ffmpeg_dst_language_code = language.ffmpeg_code_of_code[args.dst_language]
 
                         base, ext = os.path.splitext(media_filepath)
                         dst_tmp_embedded_media_filepath = "{base}.{dst}.tmp.embedded.{format}".format(base=base, dst=ffmpeg_dst_language_code, format=ext[1:])
@@ -3230,9 +3225,6 @@ def main():
                     else:
                         completed_tasks += 1
 
-                if os.path.isfile(embedded_media_filepath):
-                    print("Subtitle embedded {} file saved as   : {}".format(media_type, embedded_media_filepath))
-
                 print('')
                 if len(media_filepaths)>0 and completed_tasks == len(media_filepaths):
                     transcribe_end_time = time.time()
@@ -3260,7 +3252,7 @@ def main():
             return 1
 
         except Exception as e:
-            if not KeyboardInterrupt in e:
+            if not KeyboardInterrupt in str(e):
                 pbar.finish()
                 pool.terminate()
                 pool.close()
