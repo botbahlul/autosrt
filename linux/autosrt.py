@@ -28,7 +28,7 @@ import shlex
 import shutil
 
 
-VERSION = "1.3.17"
+VERSION = "1.3.18"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#
@@ -208,7 +208,7 @@ class FfmpegProgress:
         if popen_kwargs is not None:
             base_popen_kwargs.update(popen_kwargs)
 
-        if sys.platform == "wind32":
+        if sys.platform == "win32":
             self.process = subprocess.Popen(
                 cmd_with_progress,
                 **base_popen_kwargs,
@@ -1164,16 +1164,19 @@ class WavConverter:
                             "-ar", str(self.rate),
                             "-loglevel", "error",
                             "-hide_banner",
+                            "-progress", "-", "-nostats",
                             temp.name
                          ]
 
         try:
+            info = f"Converting to a temporary WAV file"
+
             # RUNNING ffmpeg WITHOUT SHOWING PROGRESSS
             #use_shell = True if os.name == "nt" else False
             #subprocess.check_output(command, stdin=open(os.devnull), shell=use_shell)
 
+            '''
             # RUNNING ffmpeg_command WITH ffmpeg_progress_yield
-            info = f"Converting to a temporary WAV file"
             ff = FfmpegProgress(ffmpeg_command)
             percentage = 0
             for progress in ff.run_command_with_progress():
@@ -1181,35 +1184,41 @@ class WavConverter:
                 if self.progress_callback:
                     self.progress_callback(info, media_filepath, percentage)
             temp.close()
-
             '''
-            # RUNNING ffmpeg_command WITHOUT ffmpeg_progress_yield (NOT WORKING IN  pysimplegui)
+
+            # RUNNING ffmpeg_command WITHOUT ffmpeg_progress_yield
             ffprobe_command = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{media_filepath}"'
+
             if sys.platform == "win32":
-                ffprobe_process = subprocess.Popen(ffprobe_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                ffprobe_process = subprocess.Popen(ffprobe_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
             else:
                 ffprobe_process = subprocess.Popen(ffprobe_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
             total_duration = float(ffprobe_process.stdout.read().decode('utf-8').strip())
 
-            if sys.platform == "win32":
-                process = subprocess.Popen(ffmpeg_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-            else:
-                process = subprocess.Popen(ffmpeg_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
 
-            info = f"Converting to a temporary WAV file"
-            for line in process.stdout:
-                if "time=" in line:
-                    #print(line)
-                    time_str = line.split("time=")[1].split()[0]
-                    #print("time_str = %s" %time_str)
-                    current_duration = sum(float(x) * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
-                    #print("current_duration = %s" %current_duration)
+            if sys.platform == "win32":
+                process = subprocess.Popen(ffmpeg_command, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
+            else:
+                process = subprocess.Popen(ffmpeg_command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+            while True:
+                if process.stdout is None:
+                    continue
+
+                stderr_line = (process.stdout.readline().decode("utf-8", errors="replace").strip())
+ 
+                if stderr_line == '' and process.poll() is not None:
+                    break
+
+                if "out_time=" in stderr_line:
+                    time_str = stderr_line.split('time=')[1].split()[0]
+                    current_duration = sum(float(x) * 1000 * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
+
                     if current_duration>0:
-                        percentage = int(current_duration*100/total_duration)
+                        percentage = int(current_duration*100/(int(float(total_duration))*1000))
                         if self.progress_callback:
                             self.progress_callback(info, media_filepath, percentage)
-            '''
 
             temp.close()
 
@@ -1838,47 +1847,55 @@ class MediaSubtitleRenderer:
                                 "-crf", "23",
                                 "-preset", "medium",
                                 "-c:a", "copy",
+                                "-progress", "-", "-nostats",
                                 self.output_path
                              ]
 
-            # RUNNING ffmpeg_command USING ffmpeg_progress_yield MODULE
             info = f"Rendering subtitle file into {media_type} file : "
+
+            '''
+            # RUNNING ffmpeg_command USING ffmpeg_progress_yield MODULE
             ff = FfmpegProgress(ffmpeg_command)
             percentage = 0
             for progress in ff.run_command_with_progress():
                 percentage = progress
                 if self.progress_callback:
                     self.progress_callback(info, media_filepath, percentage)
-
             '''
+
             # RUNNING ffmpeg_command WITHOUT ffmpeg_progress_yield MODULE
             ffprobe_command = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{media_filepath}"'
 
             if sys.platform == "win32":
-                ffprobe_process = subprocess.Popen(ffprobe_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                ffprobe_process = subprocess.Popen(ffprobe_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
             else:
                 ffprobe_process = subprocess.Popen(ffprobe_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
             total_duration = float(ffprobe_process.stdout.read().decode('utf-8').strip())
 
-            if sys.platform == "win32":
-                process = subprocess.Popen(ffmpeg_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-            else:
-                process = subprocess.Popen(ffmpeg_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
 
-            info = f"Rendering subtitle file into {media_filepath}"
-            for line in process.stdout:
-                if "time=" in line:
-                    #print(line)
-                    time_str = line.split("time=")[1].split()[0]
-                    #print("time_str = %s" %time_str)
-                    current_duration = sum(float(x) * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
-                    #print("current_duration = %s" %current_duration)
+            if sys.platform == "win32":
+                process = subprocess.Popen(ffmpeg_command, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
+            else:
+                process = subprocess.Popen(ffmpeg_command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+            while True:
+                if process.stdout is None:
+                    continue
+
+                stderr_line = (process.stdout.readline().decode("utf-8", errors="replace").strip())
+ 
+                if stderr_line == '' and process.poll() is not None:
+                    break
+
+                if "out_time=" in stderr_line:
+                    time_str = stderr_line.split('time=')[1].split()[0]
+                    current_duration = sum(float(x) * 1000 * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
+
                     if current_duration>0:
-                        percentage = int(current_duration*100/total_duration)
+                        percentage = int(current_duration*100/(int(float(total_duration))*1000))
                         if self.progress_callback:
                             self.progress_callback(info, media_filepath, percentage)
-            '''
 
             if os.path.isfile(self.output_path):
                 return self.output_path
@@ -2013,47 +2030,55 @@ class MediaSubtitleEmbedder:
                                     '-metadata:s:s:' + str(next_index), f'language={shlex.quote(self.language)}',
                                     '-map', '0',
                                     '-map', '1',
+                                    '-progress', '-', '-nostats',
                                     self.output_path
                                  ]
 
-                # USING ffmpeg_progress_yield MODULE
                 info = f"Embedding subtitle file into {media_filepath}"
+
+                '''
+                # USING ffmpeg_progress_yield MODULE
                 ff = FfmpegProgress(ffmpeg_command)
                 percentage = 0
                 for progress in ff.run_command_with_progress():
                     percentage = progress
                     if self.progress_callback:
                         self.progress_callback(info, media_filepath, percentage)
-
                 '''
-                # WITHOUT USING ffmpeg_progress_yield MODULE
+
+                # RUNNING ffmpeg_command WITHOUT ffmpeg_progress_yield MODULE
                 ffprobe_command = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{media_filepath}"'
+
                 if sys.platform == "win32":
-                    ffprobe_process = subprocess.Popen(ffprobe_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                    ffprobe_process = subprocess.Popen(ffprobe_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
                 else:
                     ffprobe_process = subprocess.Popen(ffprobe_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
                 total_duration = float(ffprobe_process.stdout.read().decode('utf-8').strip())
 
-                if sys.platform == "win32":
-                    process = subprocess.Popen(ffmpeg_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-                else:
-                    process = subprocess.Popen(ffmpeg_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
 
-                info = f"Embedding subtitle file into {media_filepath}"
-                for line in process.stdout:
-                    if "time=" in line:
-                        #print(line)
-                        time_str = line.split("time=")[1].split()[0]
-                        #print("time_str = %s" %time_str)
-                        current_duration = sum(float(x) * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
-                        #print("current_duration = %s" %current_duration)
+                if sys.platform == "win32":
+                    process = subprocess.Popen(ffmpeg_command, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
+                else:
+                    process = subprocess.Popen(ffmpeg_command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+                while True:
+                    if process.stdout is None:
+                        continue
+
+                    stderr_line = (process.stdout.readline().decode("utf-8", errors="replace").strip())
+ 
+                    if stderr_line == '' and process.poll() is not None:
+                        break
+
+                    if "out_time=" in stderr_line:
+                        time_str = stderr_line.split('time=')[1].split()[0]
+                        current_duration = sum(float(x) * 1000 * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
+
                         if current_duration>0:
-                            percentage = int(current_duration*100/total_duration)
+                            percentage = int(current_duration*100/(int(float(total_duration))*1000))
                             if self.progress_callback:
                                 self.progress_callback(info, media_filepath, percentage)
-                '''
-
 
                 if os.path.isfile(self.output_path):
                     return self.output_path
@@ -2137,46 +2162,54 @@ class MediaSubtitleRemover:
                                 '-i', media_filepath,
                                 '-c', 'copy',
                                 '-sn',
+                                "-progress", "-", "-nostats",
                                 self.output_path
                              ]
 
-            # USING ffmpeg_progress_yield MODULE
             info = "Removing subtitle streams from file"
+
+            '''
+            # USING ffmpeg_progress_yield MODULE
             ff = FfmpegProgress(ffmpeg_command)
             percentage = 0
             for progress in ff.run_command_with_progress():
                 percentage = progress
                 if self.progress_callback:
                     self.progress_callback(info, media_filepath, percentage)
-
             '''
-            # WITHOUT USING ffmpeg_progress_yield MODULE
+
+            # RUNNING ffmpeg_command WITHOUT ffmpeg_progress_yield MODULE
             ffprobe_command = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{media_filepath}"'
+
             if sys.platform == "win32":
-                ffprobe_process = subprocess.Popen(ffprobe_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                ffprobe_process = subprocess.Popen(ffprobe_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
             else:
                 ffprobe_process = subprocess.Popen(ffprobe_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
             total_duration = float(ffprobe_process.stdout.read().decode('utf-8').strip())
 
             if sys.platform == "win32":
-                process = subprocess.Popen(ffmpeg_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                process = subprocess.Popen(ffmpeg_command, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
             else:
-                process = subprocess.Popen(ffmpeg_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                process = subprocess.Popen(ffmpeg_command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
-            info = "Removing subtitle streams from file"
-            for line in process.stdout:
-                if "time=" in line:
-                    #print(line)
-                    time_str = line.split("time=")[1].split()[0]
-                    #print("time_str = %s" %time_str)
-                    current_duration = sum(float(x) * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
-                    #print("current_duration = %s" %current_duration)
+            while True:
+                if process.stdout is None:
+                    continue
+
+                stderr_line = (process.stdout.readline().decode("utf-8", errors="replace").strip())
+ 
+                if stderr_line == '' and process.poll() is not None:
+                    break
+
+                if "out_time=" in stderr_line:
+                    time_str = stderr_line.split('time=')[1].split()[0]
+                    current_duration = sum(float(x) * 1000 * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
+
                     if current_duration>0:
-                        percentage = int(current_duration*100/total_duration)
+                        percentage = int(current_duration*100/(int(float(total_duration))*1000))
                         if self.progress_callback:
                             self.progress_callback(info, media_filepath, percentage)
-            '''
 
             if os.path.isfile(self.output_path):
                 return self.output_path
@@ -2604,6 +2637,7 @@ def main():
         parser.print_help(sys.stderr)
         return 1
 
+    '''
     if str(args.embed_src) == "true":
         args.embed_src = True
     if str(args.embed_src) == "false":
@@ -2613,6 +2647,12 @@ def main():
         args.embed_dst = True
     if str(args.embed_dst) == "false":
         args.embed_dst = False
+
+    if str(args.force_recognize) == "true":
+        args.force_recognize = True
+    if str(args.force_recognize) == "false":
+        args.force_recognize = False
+    '''
 
     completed_tasks = 0
     media_filepaths = []
@@ -2758,7 +2798,7 @@ def main():
                     else:
                         print("Is '%s' subtitle stream exist          : No" %(ffmpeg_src_language_code.center(3)))
 
-            print("")
+                print("")
 
             if removed_media_filepaths:
                 for removed_media_filepath in removed_media_filepaths:
@@ -2773,7 +2813,6 @@ def main():
                 msg = "Total running time                      : %s:%s:%s" %(hour.zfill(2), minute, second)
                 print(msg)
                 sys.exit(0)
-
 
         # CHECKING ffmpeg_src_language_code AND ffmpeg_dst_language_code SUBTITLE STREAMS, IF EXISTS WE PRINT IT AND EXTRACT IT
         # IF ONE OF THEM (ffmpeg_src_language_code OR ffmpeg_dst_language_code) NOT EXIST, WE TRANSLATE IT AND THEN EMBED IT
@@ -2895,7 +2934,6 @@ def main():
                             if args.embed_dst == True and dst_subtitle_stream_timed_subtitles and dst_subtitle_stream_timed_subtitles != []:
                                 print(f"No need to embed '{ffmpeg_dst_language_code}' subtitle stream because it's already existed")
 
-
                     # ffmpeg_src_language_code subtitle stream = exist,
                     # ffmpeg_dst_language_code subtitle stream = not exist
                     # so we translate it from 'args.src_language' to 'args.dst_language'
@@ -2952,7 +2990,6 @@ def main():
 
                                 if os.path.isfile(embedded_media_filepath):
                                     print("Subtitle embedded {} file saved as   : {}".format(media_type, embedded_media_filepath))
-
 
                     # ffmpeg_dst_language_code subtitle stream = exist
                     # ffmpeg_src_language_code subtitle stream = exist
