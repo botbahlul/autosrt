@@ -28,7 +28,7 @@ import shlex
 import shutil
 
 
-VERSION = "1.3.18"
+VERSION = "1.3.19"
 
 
 #======================================================== ffmpeg_progress_yield ========================================================#
@@ -2637,23 +2637,6 @@ def main():
         parser.print_help(sys.stderr)
         return 1
 
-    '''
-    if str(args.embed_src) == "true":
-        args.embed_src = True
-    if str(args.embed_src) == "false":
-        args.embed_src = False
-
-    if str(args.embed_dst) == "true":
-        args.embed_dst = True
-    if str(args.embed_dst) == "false":
-        args.embed_dst = False
-
-    if str(args.force_recognize) == "true":
-        args.force_recognize = True
-    if str(args.force_recognize) == "false":
-        args.force_recognize = False
-    '''
-
     completed_tasks = 0
     media_filepaths = []
     arg_filepaths = []
@@ -3235,7 +3218,7 @@ def main():
                         dst_tmp_embedded_media_filepath = "{base}.{dst}.tmp.embedded.{format}".format(base=base, dst=ffmpeg_dst_language_code, format=ext[1:])
                         embedded_media_filepath = "{base}.{dst}.embedded.{format}".format(base=base, dst=ffmpeg_dst_language_code, format=ext[1:])
 
-                        widgets = [f"Embedding '{ffmpeg_src_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
+                        widgets = [f"Embedding '{ffmpeg_dst_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
                         pbar = ProgressBar(widgets=widgets, maxval=100).start()
                         subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=dst_subtitle_filepath, language=ffmpeg_dst_language_code, output_path=dst_tmp_embedded_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
                         dst_tmp_output = subtitle_embedder(media_filepath)
