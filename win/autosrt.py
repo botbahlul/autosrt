@@ -28,7 +28,7 @@ import shlex
 import shutil
 
 
-VERSION = "1.4.0"
+VERSION = "1.4.2"
 
 
 def stop_ffmpeg_windows(error_messages_callback=None):
@@ -1704,8 +1704,8 @@ class MediaSubtitleRenderer:
 class MediaSubtitleEmbedder:
     @staticmethod
     def which(program):
-        def is_exe(media_filepath):
-            return os.path.isfile(media_filepath) and os.access(media_filepath, os.X_OK)
+        def is_exe(file_path):
+            return os.path.isfile(file_path) and os.access(file_path, os.X_OK)
         fpath, _ = os.path.split(program)
         if fpath:
             if is_exe(program):
@@ -1726,7 +1726,7 @@ class MediaSubtitleEmbedder:
             return "ffmpeg.exe"
         return None
 
-    def __init__(self, subtitle_path=None, language="eng", output_path=None, progress_callback=None, error_messages_callback=None):
+    def __init__(self, subtitle_path=None, language=None, output_path=None, progress_callback=None, error_messages_callback=None):
         self.subtitle_path = subtitle_path
         self.language = language
         self.output_path = output_path
@@ -1758,10 +1758,10 @@ class MediaSubtitleEmbedder:
         metadata = json.loads(output.stdout)
         streams = metadata['streams']
 
-        # Find the subtitles stream with language metadata
+        # Find the subtitle stream with language metadata
         subtitle_languages = []
         for stream in streams:
-            if stream['codec_type'] == 'subtitles' and 'tags' in stream and 'language' in stream['tags']:
+            if stream['codec_type'] == 'subtitle' and 'tags' in stream and 'language' in stream['tags']:
                 language = stream['tags']['language']
                 subtitle_languages.append(language)
 
@@ -1793,8 +1793,8 @@ class MediaSubtitleEmbedder:
         try:
             existing_languages = self.get_existing_subtitle_language(media_filepath)
             if self.language in existing_languages:
-                # THIS 'print' THINGS WILL MAKE 'progresbar' SCREWED UP!
-                #msg = (f"'{self.language}' subtitles stream already existed in {media_filepath}")
+                # THIS 'print' THINGS WILL MAKE progresbar screwed up!
+                #msg = (f"'{self.language}' subtitle stream already existed in {media_filepath}")
                 #if self.error_messages_callback:
                 #    self.error_messages_callback(msg)
                 #else:
@@ -1802,7 +1802,7 @@ class MediaSubtitleEmbedder:
                 return
 
             else:
-                # Determine the next available subtitles index
+                # Determine the next available subtitle index
                 next_index = len(existing_languages)
 
                 ffmpeg_command = [
@@ -3017,6 +3017,7 @@ def main():
                         if os.path.isfile(src_tmp_output) and os.path.isfile(dst_subtitle_filepath):
                             src_dst_tmp_output = embed_subtitle_to_media(src_tmp_embedded_media_filepath, media_type, dst_subtitle_filepath, ffmpeg_dst_language_code, src_dst_tmp_embedded_media_filepath)
                         '''
+
 
                         # USING CLASS
                         widgets = [f"Embedding '{ffmpeg_src_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
