@@ -28,7 +28,7 @@ import shlex
 import shutil
 
 
-VERSION = "1.4.3"
+VERSION = "1.4.4"
 
 
 class Language:
@@ -303,6 +303,9 @@ class Language:
         self.list_names.append("Yoruba")
         self.list_names.append("Zulu")
 
+        # NOTE THAT Google Translate AND Vosk Speech Recognition API USE ISO-639-1 STANDARD CODE ('al', 'af', 'as', ETC)
+        # WHEN ffmpeg SUBTITLES STREAMS USE ISO 639-2 STANDARD CODE ('afr', 'alb', 'amh', ETC)
+
         self.list_ffmpeg_codes = []
         self.list_ffmpeg_codes.append("afr")  # Afrikaans
         self.list_ffmpeg_codes.append("alb")  # Albanian
@@ -439,11 +442,13 @@ class Language:
         self.list_ffmpeg_codes.append("zul")  # Zulu
 
         self.code_of_name = dict(zip(self.list_names, self.list_codes))
+        self.code_of_ffmpeg_code = dict(zip(self.list_ffmpeg_codes, self.list_codes))
+
         self.name_of_code = dict(zip(self.list_codes, self.list_names))
+        self.name_of_ffmpeg_code = dict(zip(self.list_ffmpeg_codes, self.list_names))
 
         self.ffmpeg_code_of_name = dict(zip(self.list_names, self.list_ffmpeg_codes))
         self.ffmpeg_code_of_code = dict(zip(self.list_codes, self.list_ffmpeg_codes))
-        self.name_of_ffmpeg_code = dict(zip(self.list_ffmpeg_codes, self.list_names))
 
         self.dict = {
                         'af': 'Afrikaans',
@@ -717,19 +722,27 @@ class Language:
                                 'zu': 'zul', # Zulu
                            }
 
-    def get_name(self, code):
+    def get_code_of_name(self, name):
+        return self.code_of_name[name]
+
+    def get_code_of_ffmpeg_code(self, ffmpeg_code):
+        return self.code_of_ffmpeg_code[ffmpeg_code]
+
+    def get_name_of_code(self, code):
         return self.name_of_code[code]
 
-    def get_code(self, language):
-        return self.code_of_name[language]
+    def get_name_of_ffmpeg_code(self, ffmpeg_code):
+        return self.name_of_ffmpeg_code[ffmpeg_code]
 
-    def get_ffmpeg_code(self, code):
+    def get_ffmpeg_code_of_name(self, name):
+        return self.ffmpeg_code_of_name[name]
+
+    def get_ffmpeg_code_of_code(self, code):
         return self.ffmpeg_code_of_code[code]
 
 
 class WavConverter:
-    @staticmethod
-    def which(program):
+    def which(self, program):
         def is_exe(file_path):
             return os.path.isfile(file_path) and os.access(file_path, os.X_OK)
         fpath, _ = os.path.split(program)
@@ -744,19 +757,17 @@ class WavConverter:
                     return exe_file
         return None
 
-    @staticmethod
-    def ffprobe_check():
-        if WavConverter.which("ffprobe"):
+    def ffprobe_check(self):
+        if self.which("ffprobe"):
             return "ffprobe"
-        if WavConverter.which("ffprobe.exe"):
+        if self.which("ffprobe.exe"):
             return "ffprobe.exe"
         return None
 
-    @staticmethod
-    def ffmpeg_check():
-        if WavConverter.which("ffmpeg"):
+    def ffmpeg_check(self):
+        if self.which("ffmpeg"):
             return "ffmpeg"
-        if WavConverter.which("ffmpeg.exe"):
+        if self.which("ffmpeg.exe"):
             return "ffmpeg.exe"
         return None
 
@@ -849,9 +860,9 @@ class WavConverter:
                     time_str = stderr_line.split('time=')[1].split()[0]
                     current_duration = sum(float(x) * 1000 * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
 
-                    if current_duration>0:
+                    if current_duration>0 and current_duration<=total_duration*1000:
                         percentage = int(current_duration*100/(int(float(total_duration))*1000))
-                        if self.progress_callback:
+                        if self.progress_callback and percentage <= 100:
                             self.progress_callback(info, media_file_display_name, percentage, start_time)
 
             temp.close()
@@ -894,8 +905,7 @@ class WavConverter:
 
 
 class SpeechRegionFinder:
-    @staticmethod
-    def percentile(arr, percent):
+    def percentile(self, arr, percent):
         arr = sorted(arr)
         k = (len(arr) - 1) * percent
         f = math.floor(k)
@@ -925,7 +935,7 @@ class SpeechRegionFinder:
             for i in range(n_chunks):
                 chunk = reader.readframes(self.frame_width)
                 energies.append(audioop.rms(chunk, sample_width * n_channels))
-            threshold = SpeechRegionFinder.percentile(energies, 0.2)
+            threshold = self.percentile(energies, 0.2)
             elapsed_time = 0
             regions = []
             region_start = None
@@ -957,8 +967,7 @@ class SpeechRegionFinder:
 
 
 class FLACConverter(object):
-    @staticmethod
-    def which(program):
+    def which(self, program):
         def is_exe(file_path):
             return os.path.isfile(file_path) and os.access(file_path, os.X_OK)
         fpath, _ = os.path.split(program)
@@ -973,11 +982,10 @@ class FLACConverter(object):
                     return exe_file
         return None
 
-    @staticmethod
-    def ffmpeg_check():
-        if FLACConverter.which("ffmpeg"):
+    def ffmpeg_check(self):
+        if self.which("ffmpeg"):
             return "ffmpeg"
-        if FLACConverter.which("ffmpeg.exe"):
+        if self.which("ffmpeg.exe"):
             return "ffmpeg.exe"
         return None
 
@@ -995,7 +1003,7 @@ class FLACConverter(object):
                 self.error_messages_callback("Cannot find ffmpeg executable")
             else:
                 print("Cannot find ffmpeg executable")
-                raise Exception("Dependency not found: ffmpeg")
+            raise Exception("Dependency not found: ffmpeg")
 
         try:
             if "\\" in self.wav_filepath:
@@ -1295,8 +1303,7 @@ class SubtitleWriter:
 
 
 class SubtitleStreamParser:
-    @staticmethod
-    def which(program):
+    def which(self, program):
         def is_exe(file_path):
             return os.path.isfile(file_path) and os.access(file_path, os.X_OK)
         fpath, _ = os.path.split(program)
@@ -1311,12 +1318,18 @@ class SubtitleStreamParser:
                     return exe_file
         return None
 
-    @staticmethod
-    def ffprobe_check():
-        if SubtitleStreamParser.which("ffprobe"):
+    def ffprobe_check(self):
+        if self.which("ffprobe"):
             return "ffprobe"
-        if SubtitleStreamParser.which("ffprobe.exe"):
+        if self.which("ffprobe.exe"):
             return "ffprobe.exe"
+        return None
+
+    def ffmpeg_check(self):
+        if self.which("ffmpeg"):
+            return "ffmpeg"
+        if self.which("ffmpeg.exe"):
+            return "ffmpeg.exe"
         return None
 
     def __init__(self, error_messages_callback=None):
@@ -1328,7 +1341,6 @@ class SubtitleStreamParser:
 
 
     def get_subtitle_streams(self, media_filepath):
-
         ffprobe_cmd = [
                         'ffprobe',
                         '-hide_banner',
@@ -1384,7 +1396,6 @@ class SubtitleStreamParser:
             return None
 
     def get_timed_subtitles(self, media_filepath, subtitle_stream_index):
-
         ffmpeg_cmd = [
                         'ffmpeg',
                         '-hide_banner',
@@ -1406,9 +1417,8 @@ class SubtitleStreamParser:
             output = result.stdout
 
             timed_subtitles = []
-            subtitle_data = []
+            subtitle_streams_data_with_timed_subtitles = []
             lines = output.strip().split('\n')
-            #print(lines)
             subtitles = []
             subtitles = None
             subtitle_blocks = []
@@ -1491,6 +1501,13 @@ class SubtitleStreamParser:
                 print("Cannot find ffprobe executable")
                 raise Exception("Dependency not found: ffprobe")
 
+        if not self.ffmpeg_check():
+            if self.error_messages_callback:
+                self.error_messages_callback("Cannot find ffmpeg executable")
+            else:
+                print("Cannot find ffmpeg executable")
+                raise Exception("Dependency not found: ffmpeg")
+
         subtitle_streams = self.get_subtitle_streams(media_filepath)
         subtitle_streams_data = []
         if subtitle_streams:
@@ -1500,24 +1517,22 @@ class SubtitleStreamParser:
                 #print(f"Stream Index: {subtitle_stream_index}, Language: {subtitle_stream_language}")
                 subtitle_streams_data.append((subtitle_stream_index, subtitle_stream_language))
 
-        subtitle_data = []
-        subtitle_contents = []
+        subtitle_streams_data_with_timed_subtitles = []
 
         for subtitle_stream_index in range(len(subtitle_streams)):
             index, language = subtitle_streams_data[subtitle_stream_index]
             self._indexes.append(index)
             self._languages.append(language)
             self._timed_subtitles.append(self.get_timed_subtitles(media_filepath, subtitle_stream_index+1))
-            subtitle_data.append((index, language, self.get_timed_subtitles(media_filepath, subtitle_stream_index+1)))
+            subtitle_streams_data_with_timed_subtitles.append((index, language, self.get_timed_subtitles(media_filepath, subtitle_stream_index+1)))
 
-        self._number_of_streams = len(subtitle_data)
+        self._number_of_streams = len(subtitle_streams_data_with_timed_subtitles)
 
-        return subtitle_data
+        return subtitle_streams_data_with_timed_subtitles
 
 
 class MediaSubtitleRenderer:
-    @staticmethod
-    def which(program):
+    def which(self, program):
         def is_exe(file_path):
             return os.path.isfile(file_path) and os.access(file_path, os.X_OK)
         fpath, _ = os.path.split(program)
@@ -1532,20 +1547,18 @@ class MediaSubtitleRenderer:
                     return exe_file
         return None
 
-    @staticmethod
-    def ffmpeg_check():
-        if MediaSubtitleRenderer.which("ffmpeg"):
-            return "ffmpeg"
-        if MediaSubtitleRenderer.which("ffmpeg.exe"):
-            return "ffmpeg.exe"
+    def ffprobe_check(self):
+        if self.which("ffprobe"):
+            return "ffprobe"
+        if self.which("ffprobe.exe"):
+            return "ffprobe.exe"
         return None
 
-    @staticmethod
-    def ffprobe_check():
-        if MediaSubtitleRenderer.which("ffprobe"):
-            return "ffprobe"
-        if MediaSubtitleRenderer.which("ffprobe.exe"):
-            return "ffprobe.exe"
+    def ffmpeg_check(self):
+        if self.which("ffmpeg"):
+            return "ffmpeg"
+        if self.which("ffmpeg.exe"):
+            return "ffmpeg.exe"
         return None
 
     def __init__(self, subtitle_path=None, language=None, output_path=None, progress_callback=None, error_messages_callback=None):
@@ -1646,9 +1659,9 @@ class MediaSubtitleRenderer:
                     time_str = stderr_line.split('time=')[1].split()[0]
                     current_duration = sum(float(x) * 1000 * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
 
-                    if current_duration>0:
+                    if current_duration>0 and current_duration<=total_duration*1000:
                         percentage = int(current_duration*100/(int(float(total_duration))*1000))
-                        if self.progress_callback:
+                        if self.progress_callback and percentage <= 100:
                             self.progress_callback(info, media_file_display_name, percentage, start_time)
 
             if os.path.isfile(self.output_path):
@@ -1672,8 +1685,7 @@ class MediaSubtitleRenderer:
 
 
 class MediaSubtitleEmbedder:
-    @staticmethod
-    def which(program):
+    def which(self, program):
         def is_exe(file_path):
             return os.path.isfile(file_path) and os.access(file_path, os.X_OK)
         fpath, _ = os.path.split(program)
@@ -1688,19 +1700,17 @@ class MediaSubtitleEmbedder:
                     return exe_file
         return None
 
-    @staticmethod
-    def ffprobe_check():
-        if MediaSubtitleEmbedder.which("ffprobe"):
+    def ffprobe_check(self):
+        if self.which("ffprobe"):
             return "ffprobe"
-        if MediaSubtitleEmbedder.which("ffprobe.exe"):
+        if self.which("ffprobe.exe"):
             return "ffprobe.exe"
         return None
 
-    @staticmethod
-    def ffmpeg_check():
-        if MediaSubtitleEmbedder.which("ffmpeg"):
+    def ffmpeg_check(self):
+        if self.which("ffmpeg"):
             return "ffmpeg"
-        if MediaSubtitleEmbedder.which("ffmpeg.exe"):
+        if self.which("ffmpeg.exe"):
             return "ffmpeg.exe"
         return None
 
@@ -1853,9 +1863,9 @@ class MediaSubtitleEmbedder:
                         time_str = stderr_line.split('time=')[1].split()[0]
                         current_duration = sum(float(x) * 1000 * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
 
-                        if current_duration>0:
+                        if current_duration>0 and current_duration<=total_duration*1000:
                             percentage = int(current_duration*100/(int(float(total_duration))*1000))
-                            if self.progress_callback:
+                            if self.progress_callback and percentage <= 100:
                                 self.progress_callback(info, media_file_display_name, percentage, start_time)
 
                 if os.path.isfile(self.output_path):
@@ -1884,8 +1894,7 @@ class MediaSubtitleEmbedder:
 
 
 class MediaSubtitleRemover:
-    @staticmethod
-    def which(program):
+    def which(self, program):
         def is_exe(file_path):
             return os.path.isfile(file_path) and os.access(file_path, os.X_OK)
         fpath, _ = os.path.split(program)
@@ -1900,19 +1909,17 @@ class MediaSubtitleRemover:
                     return exe_file
         return None
 
-    @staticmethod
-    def ffprobe_check():
-        if MediaSubtitleRemover.which("ffprobe"):
+    def ffprobe_check(self):
+        if self.which("ffprobe"):
             return "ffprobe"
-        if MediaSubtitleRemover.which("ffprobe.exe"):
+        if self.which("ffprobe.exe"):
             return "ffprobe.exe"
         return None
 
-    @staticmethod
-    def ffmpeg_check():
-        if MediaSubtitleRemover.which("ffmpeg"):
+    def ffmpeg_check(self):
+        if self.which("ffmpeg"):
             return "ffmpeg"
-        if MediaSubtitleRemover.which("ffmpeg.exe"):
+        if self.which("ffmpeg.exe"):
             return "ffmpeg.exe"
         return None
 
@@ -2005,9 +2012,9 @@ class MediaSubtitleRemover:
                     time_str = stderr_line.split('time=')[1].split()[0]
                     current_duration = sum(float(x) * 1000 * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
 
-                    if current_duration>0:
+                    if current_duration>0 and current_duration<=total_duration*1000:
                         percentage = int(current_duration*100/(int(float(total_duration))*1000))
-                        if self.progress_callback:
+                        if self.progress_callback and percentage <= 100:
                             self.progress_callback(info, media_file_display_name, percentage, start_time)
 
             if os.path.isfile(self.output_path):
@@ -2036,17 +2043,15 @@ class MediaSubtitleRemover:
 
 
 class SRTFileReader:
-    def __init__(self, srt_file_path, error_messages_callback=None):
-        self.timed_subtitles = self(srt_file_path)
+    def __init__(self, error_messages_callback=None):
         self.error_messages_callback = error_messages_callback
+        self.timed_subtitles = []
 
-    @staticmethod
-    def __call__(srt_file_path):
+    def __call__(self, srt_file_path):
         try:
             """
             Read SRT formatted subtitles file and return subtitles as list of tuples
             """
-            timed_subtitles = []
             with open(srt_file_path, 'r') as srt_file:
                 lines = srt_file.readlines()
                 # Split the subtitles file into subtitles blocks
@@ -2072,8 +2077,8 @@ class SRTFileReader:
                         end_time_total_seconds = end_time_time_delta.total_seconds()
                         # Extract subtitles text from subtitles block
                         subtitles = ' '.join(block[2:])
-                        timed_subtitles.append(((start_time_total_seconds, end_time_total_seconds), subtitles))
-                return timed_subtitles
+                        self.timed_subtitles.append(((start_time_total_seconds, end_time_total_seconds), subtitles))
+                return self.timed_subtitles
 
         except KeyboardInterrupt:
             if self.error_messages_callback:
@@ -2366,9 +2371,10 @@ def render_subtitle_into_media(media_filepath, media_type, subtitle_path, langua
             if "out_time=" in stderr_line:
                 time_str = stderr_line.split('time=')[1].split()[0]
                 current_duration = sum(float(x) * 1000 * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
-                if current_duration>0:
+                if current_duration>0 and current_duration<=total_duration*1000:
                     percentage = int(current_duration*100/(int(float(total_duration))*1000))
-                    pbar.update(percentage)
+                    if percentage<=100:
+                        pbar.update(percentage)
         pbar.finish()
         return output_path
 
@@ -2512,9 +2518,10 @@ def embed_subtitle_into_media(media_filepath, media_type, subtitle_path, languag
                 if "out_time=" in stderr_line:
                     time_str = stderr_line.split('time=')[1].split()[0]
                     current_duration = sum(float(x) * 1000 * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
-                    if current_duration>0:
+                    if current_duration>0 and current_duration<=total_duration*1000:
                         percentage = int(current_duration*100/(int(float(total_duration))*1000))
-                        pbar.update(percentage)
+                        if percentage<=100:
+                            pbar.update(percentage)
             pbar.finish()
 
             return output_path
@@ -2644,9 +2651,10 @@ def remove_subtitles_from_media(media_filepath, output_path, progress_callback=N
             if "out_time=" in stderr_line:
                 time_str = stderr_line.split('time=')[1].split()[0]
                 current_duration = sum(float(x) * 1000 * 60 ** i for i, x in enumerate(reversed(time_str.split(":"))))
-                if current_duration>0:
+                if current_duration>0 and current_duration<=total_duration*1000:
                     percentage = int(current_duration*100/(int(float(total_duration))*1000))
-                    pbar.update(percentage)
+                    if percentage<=100:
+                        pbar.update(percentage)
         pbar.finish()
 
         return output_path
