@@ -28,7 +28,7 @@ import shlex
 import shutil
 
 
-VERSION = "1.4.5"
+VERSION = "1.4.6"
 
 
 class Language:
@@ -785,10 +785,10 @@ class WavConverter:
 
         if not os.path.isfile(media_filepath):
             if self.error_messages_callback:
-                self.error_messages_callback(f"The given file does not exist: {media_filepath}")
+                self.error_messages_callback(f"The given file does not exist: '{media_filepath}'")
             else:
-                print(f"The given file does not exist: {media_filepath}")
-                raise Exception(f"Invalid file: {media_filepath}")
+                print(f"The given file does not exist: '{media_filepath}'")
+                raise Exception(f"Invalid file: '{media_filepath}'")
 
         if not self.ffprobe_check():
             if self.error_messages_callback:
@@ -1580,10 +1580,10 @@ class MediaSubtitleRenderer:
 
         if not os.path.isfile(media_filepath):
             if self.error_messages_callback:
-                self.error_messages_callback(f"The given file does not exist: {media_filepath}")
+                self.error_messages_callback(f"The given file does not exist: '{media_filepath}'")
             else:
-                print(f"The given file does not exist: {media_filepath}")
-                raise Exception(f"Invalid file: {media_filepath}")
+                print(f"The given file does not exist: '{media_filepath}'")
+                raise Exception(f"Invalid file: '{media_filepath}'")
 
         if not self.ffprobe_check():
             if self.error_messages_callback:
@@ -1767,10 +1767,10 @@ class MediaSubtitleEmbedder:
 
         if not os.path.isfile(media_filepath):
             if self.error_messages_callback:
-                self.error_messages_callback(f"The given file does not exist: {media_filepath}")
+                self.error_messages_callback(f"The given file does not exist: '{media_filepath}'")
             else:
-                print(f"The given file does not exist: {media_filepath}")
-                raise Exception(f"Invalid file: {media_filepath}")
+                print(f"The given file does not exist: '{media_filepath}'")
+                raise Exception(f"Invalid file: '{media_filepath}'")
 
         if not self.ffprobe_check():
             if self.error_messages_callback:
@@ -1790,7 +1790,7 @@ class MediaSubtitleEmbedder:
             existing_languages = self.get_existing_subtitle_language(media_filepath)
             if self.language in existing_languages:
                 # THIS 'print' THINGS WILL MAKE progresbar screwed up!
-                #msg = (f"'{self.language}' subtitle stream already existed in {media_filepath}")
+                #msg = (f"'{self.language}' subtitle stream already existed in '{media_filepath}'")
                 #if self.error_messages_callback:
                 #    self.error_messages_callback(msg)
                 #else:
@@ -1937,10 +1937,10 @@ class MediaSubtitleRemover:
 
         if not os.path.isfile(media_filepath):
             if self.error_messages_callback:
-                self.error_messages_callback(f"The given file does not exist: {media_filepath}")
+                self.error_messages_callback(f"The given file does not exist: '{media_filepath}'")
             else:
-                print(f"The given file does not exist: {media_filepath}")
-                raise Exception(f"Invalid file: {media_filepath}")
+                print(f"The given file does not exist: '{media_filepath}'")
+                raise Exception(f"Invalid file: '{media_filepath}'")
 
         if not self.ffprobe_check():
             if self.error_messages_callback:
@@ -2123,10 +2123,10 @@ def has_subtitles(media_filepath, error_messages_callback=None):
 
     if not os.path.isfile(media_filepath):
         if error_messages_callback:
-           error_messages_callback(f"The given file does not exist: {media_filepath}")
+           error_messages_callback(f"The given file does not exist: '{media_filepath}'")
         else:
-            print(f"The given file does not exist: {media_filepath}")
-            raise Exception(f"Invalid file: {media_filepath}")
+            print(f"The given file does not exist: '{media_filepath}'")
+            raise Exception(f"Invalid file: '{media_filepath}'")
     if not ffmpeg_check():
         if error_messages_callback:
             error_messages_callback("Cannot find ffmpeg executable")
@@ -2197,10 +2197,10 @@ def get_existing_subtitle_language(media_path):
 
     if not os.path.isfile(media_filepath):
         if error_messages_callback:
-           error_messages_callback(f"The given file does not exist: {media_filepath}")
+           error_messages_callback(f"The given file does not exist: '{media_filepath}'")
         else:
-            print(f"The given file does not exist: {media_filepath}")
-            raise Exception(f"Invalid file: {media_filepath}")
+            print(f"The given file does not exist: '{media_filepath}'")
+            raise Exception(f"Invalid file: '{media_filepath}'")
     if not ffprobe_check():
         if error_messages_callback:
             error_messages_callback("Cannot find ffprobe executable")
@@ -2282,10 +2282,10 @@ def render_subtitle_into_media(media_filepath, media_type, subtitle_path, langua
 
     if not os.path.isfile(media_filepath):
         if error_messages_callback:
-           error_messages_callback(f"The given file does not exist: {media_filepath}")
+           error_messages_callback(f"The given file does not exist: '{media_filepath}'")
         else:
-            print(f"The given file does not exist: {media_filepath}")
-            raise Exception(f"Invalid file: {media_filepath}")
+            print(f"The given file does not exist: '{media_filepath}'")
+            raise Exception(f"Invalid file: '{media_filepath}'")
 
     if not ffprobe_check():
         if error_messages_callback:
@@ -2421,10 +2421,10 @@ def embed_subtitle_into_media(media_filepath, media_type, subtitle_path, languag
 
     if not os.path.isfile(media_filepath):
         if error_messages_callback:
-           error_messages_callback(f"The given file does not exist: {media_filepath}")
+           error_messages_callback(f"The given file does not exist: '{media_filepath}'")
         else:
-            print(f"The given file does not exist: {media_filepath}")
-            raise Exception(f"Invalid file: {media_filepath}")
+            print(f"The given file does not exist: '{media_filepath}'")
+            raise Exception(f"Invalid file: '{media_filepath}'")
 
     if not ffprobe_check():
         if error_messages_callback:
@@ -2452,7 +2452,7 @@ def embed_subtitle_into_media(media_filepath, media_type, subtitle_path, languag
 
         existing_languages = get_existing_subtitle_language(media_filepath)
         if language_code in existing_languages:
-            #print(f"'{language_code}' subtitles stream already existed in {media_filepath}")
+            #print(f"'{language_code}' subtitles stream already existed in '{media_filepath}'")
             return
 
         else:
@@ -2571,10 +2571,10 @@ def remove_subtitles_from_media(media_filepath, output_path, progress_callback=N
 
     if not os.path.isfile(media_filepath):
         if error_messages_callback:
-           error_messages_callback(f"The given file does not exist: {media_filepath}")
+           error_messages_callback(f"The given file does not exist: '{media_filepath}'")
         else:
-            print(f"The given file does not exist: {media_filepath}")
-            raise Exception(f"Invalid file: {media_filepath}")
+            print(f"The given file does not exist: '{media_filepath}'")
+            raise Exception(f"Invalid file: '{media_filepath}'")
 
     if not ffprobe_check():
         if error_messages_callback:
@@ -2788,10 +2788,10 @@ def check_file_type(media_filepath, error_messages_callback=None):
 
     if not os.path.isfile(media_filepath):
         if error_messages_callback:
-           error_messages_callback(f"The given file does not exist: {media_filepath}")
+           error_messages_callback(f"The given file does not exist: '{media_filepath}'")
         else:
-            print(f"The given file does not exist: {media_filepath}")
-            raise Exception(f"Invalid file: {media_filepath}")
+            print(f"The given file does not exist: '{media_filepath}'")
+            raise Exception(f"Invalid file: '{media_filepath}'")
     if not ffprobe_check():
         if error_messages_callback:
             error_messages_callback("Cannot find ffprobe executable")
