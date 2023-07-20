@@ -28,7 +28,7 @@ import shlex
 import shutil
 
 
-VERSION = "1.4.7"
+VERSION = "1.4.8"
 
 
 class Language:
@@ -3001,6 +3001,8 @@ def main():
     subtitle_format = args.format
 
     removed_media_filepaths = []
+    processed_list = []
+
 
     # CHECK SUBTITLE STREAM PART IF args.force_recognize == False
     if args.force_recognize == False:
@@ -3020,7 +3022,7 @@ def main():
                 media_type = check_file_type(media_filepath, error_messages_callback=show_error_messages)
 
                 if media_type == "audio":
-                    print("Audio file won't have subtitles streams, skip checking")
+                    print("Audio file won't has subtitles streams, skip checking")
                     continue
 
                 subtitle_stream_parser = SubtitleStreamParser(error_messages_callback=show_error_messages)
@@ -3089,7 +3091,7 @@ def main():
                 media_type = check_file_type(media_filepath, error_messages_callback=show_error_messages)
 
                 if media_type == "audio":
-                    print("Audio file won't have subtitles streams, skip checking")
+                    print("Audio file won't has subtitles streams, skip checking")
                     continue
 
                 ffmpeg_src_language_code = language.ffmpeg_code_of_code[args.src_language]
@@ -3316,361 +3318,337 @@ def main():
                 sys.exit(0)
 
 
-    # SUBTITLES STREAMS REMOVER PART (IF args.force_recognize == True)
-    print("FORCE RECOGNIZE FLAG CHECK")
-    print("==========================")
+    if args.force_recognize == True:
+        # SUBTITLES STREAMS REMOVER PART (IF args.force_recognize == True)
+        print("FORCE RECOGNIZE FLAG CHECK")
+        print("==========================")
 
-    processed_list = []
+        # if args.force_recognize is true then we need to remove subtitles streams and save it as new media file to processed with transcribe
+        for media_filepath in media_filepaths:
 
-    # if args.force_recognize is true then we need to remove subtitles streams and save it as new media file to processed with transcribe
-    for media_filepath in media_filepaths:
+            print(f"Checking '{media_filepath}'")
 
-        print(f"Checking '{media_filepath}'")
+            media_type = check_file_type(media_filepath, error_messages_callback=show_error_messages)
 
-        media_type = check_file_type(media_filepath, error_messages_callback=show_error_messages)
+            if media_type == "video" and args.force_recognize == True:
 
-        if media_type == "video" and args.force_recognize == True:
+                force_recognize_media_file_format = None
 
-            force_recognize_media_file_format = None
+                base, ext = os.path.splitext(media_filepath)
+                if ext[1:] == "ts":
+                    force_recognize_media_file_format = "mp4"
+                else:
+                    force_recognize_media_file_format = ext[1:]
 
-            base, ext = os.path.splitext(media_filepath)
-            if ext[1:] == "ts":
-                force_recognize_media_file_format = "mp4"
+                #print(f"media_filepath = {media_filepath}")
+                subtitle_stream_parser = SubtitleStreamParser()
+                subtitle_streams_data = subtitle_stream_parser(media_filepath)
+                #print(f"subtitle_streams_data = {subtitle_streams_data}")
+                #print(f"subtitle_stream_parser.timed_subtitles_of_index(1) = {subtitle_stream_parser.timed_subtitles_of_index(1)}")
+
+                if subtitle_streams_data and subtitle_stream_parser.timed_subtitles_of_index(1) != []:
+
+                    tmp_subtitle_removed_media_filepath = f"{base}.tmp.subtitles.removed.media_filepath.{force_recognize_media_file_format}"
+                    subtitle_removed_media_filepath = f"{base}.force.recognize.{force_recognize_media_file_format}"
+
+                    widgets = ["Removing subtitles streams from file    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
+                    pbar = ProgressBar(widgets=widgets, maxval=100).start()
+                    subtitle_remover = MediaSubtitleRemover(output_path=tmp_subtitle_removed_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
+                    tmp_output = subtitle_remover(media_filepath)
+                    pbar.finish()
+
+                    if os.path.isfile(tmp_output):
+                        shutil.copy(tmp_output, subtitle_removed_media_filepath)
+                        os.remove(tmp_output)
+
+                        processed_list.append(subtitle_removed_media_filepath)
+
+                    print(f"Subtitles removed {media_type} file saved as   : '{subtitle_removed_media_filepath}'")
+
+                else:
+                    print("Nothing to remove")
+                    if media_filepath not in processed_list and media_filepath not in removed_media_filepaths:
+                        processed_list.append(media_filepath)
+
             else:
-                force_recognize_media_file_format = ext[1:]
+                if media_type == "video":
+                    print("force_recognize is false")
 
-            #print(f"media_filepath = {media_filepath}")
-            subtitle_stream_parser = SubtitleStreamParser()
-            subtitle_streams_data = subtitle_stream_parser(media_filepath)
-            #print(f"subtitle_streams_data = {subtitle_streams_data}")
-            #print(f"subtitle_stream_parser.timed_subtitles_of_index(1) = {subtitle_stream_parser.timed_subtitles_of_index(1)}")
+                if media_type == "audio":
+                    print(f"'{media_filepath}' is audio file, nothing to remove")
 
-            if subtitle_streams_data and subtitle_stream_parser.timed_subtitles_of_index(1) != []:
-
-                tmp_subtitle_removed_media_filepath = f"{base}.tmp.subtitles.removed.media_filepath.{force_recognize_media_file_format}"
-                subtitle_removed_media_filepath = f"{base}.force.recognize.{force_recognize_media_file_format}"
-
-                widgets = ["Removing subtitles streams from file    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
-                pbar = ProgressBar(widgets=widgets, maxval=100).start()
-                subtitle_remover = MediaSubtitleRemover(output_path=tmp_subtitle_removed_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
-                tmp_output = subtitle_remover(media_filepath)
-                pbar.finish()
-
-                if os.path.isfile(tmp_output):
-                    shutil.copy(tmp_output, subtitle_removed_media_filepath)
-                    os.remove(tmp_output)
-
-                    processed_list.append(subtitle_removed_media_filepath)
-
-                print(f"Subtitles removed {media_type} file saved as   : '{subtitle_removed_media_filepath}'")
-
-            else:
-                print("Nothing to remove")
                 if media_filepath not in processed_list and media_filepath not in removed_media_filepaths:
                     processed_list.append(media_filepath)
 
-        else:
-            if media_type == "video":
-                print("force_recognize is false")
+            print("")
 
-            if media_type == "audio":
-                print(f"'{media_filepath}' is audio file, nothing to remove")
-
-            if media_filepath not in processed_list and media_filepath not in removed_media_filepaths:
+    if args.force_recognize == False and processed_list == []:
+        for media_filepath in media_filepaths:
+            if media_filepath not in removed_media_filepaths:
                 processed_list.append(media_filepath)
 
-        print("")
 
+    if processed_list:
+        # START THE TRANSCRIBE PROCESS
+        print("PERFORMING SPEECH RECOGNITION FOR MEDIA FILES THAT HAVE NO SUBTITLES STREAMS OR FORCED TO BE RECOGNIZED")
+        print("=========================================================================================================")
 
-    # START THE TRANSCRIBE PROCESS
-    print("PERFORMING SPEECH RECOGNITION FOR MEDIA FILES THAT HAVE NO SUBTITLES STREAMS OR FORCED TO BE RECOGNIZED")
-    print("=========================================================================================================")
+        for media_filepath in processed_list:
+            print(f"Processing '{media_filepath}'")
 
-    for media_filepath in processed_list:
-        print(f"Processing '{media_filepath}'")
+            media_type = check_file_type(media_filepath, error_messages_callback=show_error_messages)
 
-        media_type = check_file_type(media_filepath, error_messages_callback=show_error_messages)
-
-        try:
-            widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
-            pbar = ProgressBar(widgets=widgets, maxval=100).start()
-            wav_converter = WavConverter(progress_callback=show_progress, error_messages_callback=show_error_messages)
-            wav_filepath, sample_rate = wav_converter(media_filepath)
-            pbar.finish()
-
-            region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6, error_messages_callback=show_error_messages)
-            regions = region_finder(wav_filepath)
-
-            converter = FLACConverter(wav_filepath=wav_filepath, error_messages_callback=show_error_messages)
-            recognizer = SpeechRecognizer(language=args.src_language, rate=sample_rate, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", error_messages_callback=show_error_messages)
-
-            if regions:
-                widgets = ["Converting speech regions to FLAC files : ", Percentage(), ' ', Bar(), ' ', ETA()]
-                pbar = ProgressBar(widgets=widgets, maxval=len(regions)).start()
-                extracted_regions = []
-                for i, extracted_region in enumerate(pool.imap(converter, regions)):
-                    extracted_regions.append(extracted_region)
-                    pbar.update(i)
+            try:
+                widgets = ["Converting to a temporary WAV file      : ", Percentage(), ' ', Bar(), ' ', ETA()]
+                pbar = ProgressBar(widgets=widgets, maxval=100).start()
+                wav_converter = WavConverter(progress_callback=show_progress, error_messages_callback=show_error_messages)
+                wav_filepath, sample_rate = wav_converter(media_filepath)
                 pbar.finish()
 
-                widgets = ["Performing speech recognition           : ", Percentage(), ' ', Bar(), ' ', ETA()]
-                pbar = ProgressBar(widgets=widgets, maxval=len(regions)).start()
-                transcripts = []
-                for i, transcript in enumerate(pool.imap(recognizer, extracted_regions)):
-                    transcripts.append(transcript)
-                    pbar.update(i)
-                pbar.finish()
+                region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6, error_messages_callback=show_error_messages)
+                regions = region_finder(wav_filepath)
 
-                base, ext = os.path.splitext(media_filepath)
-                src_subtitle_filepath = f"{base}.{args.src_language}.{subtitle_format}"
-                writer = SubtitleWriter(regions, transcripts, subtitle_format, error_messages_callback=show_error_messages)
-                writer.write(src_subtitle_filepath)
+                converter = FLACConverter(wav_filepath=wav_filepath, error_messages_callback=show_error_messages)
+                recognizer = SpeechRecognizer(language=args.src_language, rate=sample_rate, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", error_messages_callback=show_error_messages)
 
-                if do_translate == True:
-                    # CONCURRENT TRANSLATION USING class SentenceTranslator(object)
-                    # NO NEED TO TRANSLATE ALL transcript IN transcripts
-                    # BECAUSE SOME region IN regions MAY JUST HAVE transcript WITH EMPTY STRING
-                    # JUST TRANSLATE ALREADY CREATED subtitles ENTRIES FROM timed_subtitles
-                    timed_subtitles = writer.timed_subtitles
-                    created_regions = []
-                    created_subtitles = []
-                    for entry in timed_subtitles:
-                        created_regions.append(entry[0])
-                        created_subtitles.append(entry[1])
+                if regions:
+                    widgets = ["Converting speech regions to FLAC files : ", Percentage(), ' ', Bar(), ' ', ETA()]
+                    pbar = ProgressBar(widgets=widgets, maxval=len(regions)).start()
+                    extracted_regions = []
+                    for i, extracted_region in enumerate(pool.imap(converter, regions)):
+                        extracted_regions.append(extracted_region)
+                        pbar.update(i)
+                    pbar.finish()
 
-                    prompt = "Translating from %s to %s   : " %(args.src_language.center(8), args.dst_language.center(8))
-                    widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
-                    pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
-
-                    transcript_translator = SentenceTranslator(src=args.src_language, dst=args.dst_language, error_messages_callback=show_error_messages)
-
-                    translated_subtitles = []
-                    for i, translated_subtitle in enumerate(pool.imap(transcript_translator, created_subtitles)):
-                        translated_subtitles.append(translated_subtitle)
+                    widgets = ["Performing speech recognition           : ", Percentage(), ' ', Bar(), ' ', ETA()]
+                    pbar = ProgressBar(widgets=widgets, maxval=len(regions)).start()
+                    transcripts = []
+                    for i, transcript in enumerate(pool.imap(recognizer, extracted_regions)):
+                        transcripts.append(transcript)
                         pbar.update(i)
                     pbar.finish()
 
                     base, ext = os.path.splitext(media_filepath)
-                    dst_subtitle_filepath = f"{base}.{args.dst_language}.{subtitle_format}"
-                    translation_writer = SubtitleWriter(created_regions, translated_subtitles, subtitle_format, error_messages_callback=show_error_messages)
-                    translation_writer.write(dst_subtitle_filepath)
-
-                    print(f"Original subtitles file saved as        : '{src_subtitle_filepath}'")
-                    print(f"Translated subtitles file saved as      : '{dst_subtitle_filepath}'")
-
-                    if media_type == "audio":
-                        completed_tasks += 1
-                        #print(f"\nmedia_filepath = {media_filepath}, do_translate == True, media_type == 'audio' : completed_tasks = {completed_tasks}\n")
-
-                    elif media_type == "video" and args.embed_src == False and args.embed_dst == False:
-                        completed_tasks += 1
-                        #print(f"\nmedia_filepath = {media_filepath}, do_translate == True, media_type == 'video', args.embed_src == False and args.embed_dst == False : completed_tasks = {completed_tasks}\n")
-
-                elif do_translate == False:
-                    print(f"Subtitles file saved as                 : '{src_subtitle_filepath}'")
-
-                    if media_type == "audio":
-                        completed_tasks += 1
-                        #print(f"\nmedia_filepath = {media_filepath}, do_translate == False, media_type == 'audio' : completed_tasks = {completed_tasks}\n")
-
-                    elif media_type == "video" and args.embed_src == False:
-                        completed_tasks += 1
-                        #print(f"\nmedia_filepath = {media_filepath}, do_translate == False, media_type == 'video', args.embed_src == False : completed_tasks = {completed_tasks}\n")
+                    src_subtitle_filepath = f"{base}.{args.src_language}.{subtitle_format}"
+                    writer = SubtitleWriter(regions, transcripts, subtitle_format, error_messages_callback=show_error_messages)
+                    writer.write(src_subtitle_filepath)
 
 
-                # EMBEDDING SUBTITLES FILE
 
-                embedded_media_filepath = None
+                    if do_translate == True:
+                        # CONCURRENT TRANSLATION USING class SentenceTranslator(object)
+                        # NO NEED TO TRANSLATE ALL transcript IN transcripts
+                        # BECAUSE SOME region IN regions MAY JUST HAVE transcript WITH EMPTY STRING
+                        # JUST TRANSLATE ALREADY CREATED subtitles ENTRIES FROM timed_subtitles
+                        timed_subtitles = writer.timed_subtitles
+                        created_regions = []
+                        created_subtitles = []
+                        for entry in timed_subtitles:
+                            created_regions.append(entry[0])
+                            created_subtitles.append(entry[1])
 
-                if do_translate == False:
+                        prompt = "Translating from %s to %s   : " %(args.src_language.center(8), args.dst_language.center(8))
+                        widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
+                        pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
 
-                    media_type = check_file_type(media_filepath, error_messages_callback=show_error_messages)
+                        transcript_translator = SentenceTranslator(src=args.src_language, dst=args.dst_language, error_messages_callback=show_error_messages)
 
-                    if media_type == "audio" and args.embed_src == True:
-                        print("Subtitles can only be embedded into video file, not audio file")
-
-                    if media_type == "video" and args.embed_src == True:
-
-                        ffmpeg_src_language_code = language.ffmpeg_code_of_code[args.src_language]
-
-                        base, ext = os.path.splitext(media_filepath)
-
-                        if ext[1:] == "ts":
-                            media_format = "mp4"
-                        else:
-                            media_format = ext[1:]
-
-                        src_tmp_embedded_media_filepath = f"{base}.{ffmpeg_src_language_code}.tmp.embedded.{media_format}"
-                        embedded_media_filepath = f"{base}.{ffmpeg_src_language_code}.embedded.{media_format}"
-
-                        widgets = [f"Embedding '{ffmpeg_src_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
-                        pbar = ProgressBar(widgets=widgets, maxval=100).start()
-                        subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=src_subtitle_filepath, language=ffmpeg_src_language_code, output_path=src_tmp_embedded_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
-                        src_tmp_output = subtitle_embedder(media_filepath)
+                        translated_subtitles = []
+                        for i, translated_subtitle in enumerate(pool.imap(transcript_translator, created_subtitles)):
+                            translated_subtitles.append(translated_subtitle)
+                            pbar.update(i)
                         pbar.finish()
 
-                        if os.path.isfile(src_tmp_output):
-                            shutil.copy(src_tmp_output, embedded_media_filepath)
-                            os.remove(src_tmp_output)
-                            print(f"Subtitles embedded {media_type} file saved as  : '{embedded_media_filepath}'")
-
-                    if media_type == "video" and args.embed_src == False:
-                        completed_tasks += 1
-                        #print(f"\ndo_translate == False, media_type == 'video' : completed_tasks = {completed_tasks}\n")
-
-
-                elif do_translate == True:
-
-                    media_type = check_file_type(media_filepath, error_messages_callback=show_error_messages)
-
-                    if media_type == "audio" and (args.embed_src == True or args.embed_src == True):
-                        print("Subtitles can only be embedded into video file, not audio file")
-
-                    if media_type == "video" and args.embed_src == True and args.embed_dst == True:
-
-                        ffmpeg_src_language_code = language.ffmpeg_code_of_code[args.src_language]
-                        ffmpeg_dst_language_code = language.ffmpeg_code_of_code[args.dst_language]
-
                         base, ext = os.path.splitext(media_filepath)
+                        dst_subtitle_filepath = f"{base}.{args.dst_language}.{subtitle_format}"
+                        translation_writer = SubtitleWriter(created_regions, translated_subtitles, subtitle_format, error_messages_callback=show_error_messages)
+                        translation_writer.write(dst_subtitle_filepath)
 
-                        if ext[1:] == "ts":
-                            media_format = "mp4"
-                        else:
-                            media_format = ext[1:]
+                        print(f"Original subtitles file saved as        : '{src_subtitle_filepath}'")
+                        print(f"Translated subtitles file saved as      : '{dst_subtitle_filepath}'")
 
-                        src_tmp_embedded_media_filepath = f"{base}.{ffmpeg_src_language_code}.tmp.embedded.{media_format}"
-                        src_dst_tmp_embedded_media_filepath = f"{base}.{ffmpeg_src_language_code}.{ffmpeg_dst_language_code}.tmp.embedded.{media_format}"
-                        embedded_media_filepath = f"{base}.{ffmpeg_src_language_code}.{ffmpeg_dst_language_code}.embedded.{media_format}"
+                        if media_type == "audio":
+                            completed_tasks += 1
+                            #print(f"\nmedia_filepath = {media_filepath}, do_translate == True, media_type == 'audio' : completed_tasks = {completed_tasks}\n")
 
-                        '''
-                        # USING FUNCTION
-                        src_tmp_output = embed_subtitle_into_media(media_filepath, media_type, src_subtitle_filepath, ffmpeg_src_language_code, src_tmp_embedded_media_filepath)
-                        if os.path.isfile(src_tmp_output) and os.path.isfile(dst_subtitle_filepath):
-                            src_dst_tmp_output = embed_subtitle_into_media(src_tmp_embedded_media_filepath, media_type, dst_subtitle_filepath, ffmpeg_dst_language_code, src_dst_tmp_embedded_media_filepath)
-                        '''
+                        elif media_type == "video" and args.embed_src == False and args.embed_dst == False:
+                            completed_tasks += 1
+                            #print(f"\nmedia_filepath = {media_filepath}, do_translate == True, media_type == 'video', args.embed_src == False and args.embed_dst == False : completed_tasks = {completed_tasks}\n")
 
-                        # USING CLASS
-                        widgets = [f"Embedding '{ffmpeg_src_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
-                        pbar = ProgressBar(widgets=widgets, maxval=100).start()
-                        subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=src_subtitle_filepath, language=ffmpeg_src_language_code, output_path=src_tmp_embedded_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
-                        src_tmp_output = subtitle_embedder(media_filepath)
-                        pbar.finish()
+                    elif do_translate == False:
+                        print(f"Subtitles file saved as                 : '{src_subtitle_filepath}'")
 
-                        if os.path.isfile(src_tmp_output) and os.path.isfile(dst_subtitle_filepath):
-                            widgets = [f"Embedding '{ffmpeg_dst_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
+                        if media_type == "audio":
+                            completed_tasks += 1
+                            #print(f"\nmedia_filepath = {media_filepath}, do_translate == False, media_type == 'audio' : completed_tasks = {completed_tasks}\n")
+
+                        elif media_type == "video" and args.embed_src == False:
+                            completed_tasks += 1
+                            #print(f"\nmedia_filepath = {media_filepath}, do_translate == False, media_type == 'video', args.embed_src == False : completed_tasks = {completed_tasks}\n")
+
+
+                    # EMBEDDING SUBTITLES FILE
+
+                    embedded_media_filepath = None
+
+                    if do_translate == False:
+
+                        media_type = check_file_type(media_filepath, error_messages_callback=show_error_messages)
+
+                        if media_type == "audio" and args.embed_src == True:
+                            print("Subtitles can only be embedded into video file, not audio file")
+
+                        if media_type == "video" and args.embed_src == True:
+
+                            ffmpeg_src_language_code = language.ffmpeg_code_of_code[args.src_language]
+
+                            base, ext = os.path.splitext(media_filepath)
+
+                            if ext[1:] == "ts":
+                                media_format = "mp4"
+                            else:
+                                media_format = ext[1:]
+
+                            src_tmp_embedded_media_filepath = f"{base}.{ffmpeg_src_language_code}.tmp.embedded.{media_format}"
+                            embedded_media_filepath = f"{base}.{ffmpeg_src_language_code}.embedded.{media_format}"
+
+                            widgets = [f"Embedding '{ffmpeg_src_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
                             pbar = ProgressBar(widgets=widgets, maxval=100).start()
-                            subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=dst_subtitle_filepath, language=ffmpeg_dst_language_code, output_path=src_dst_tmp_embedded_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
-                            src_dst_tmp_output = subtitle_embedder(src_tmp_output)
+                            subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=src_subtitle_filepath, language=ffmpeg_src_language_code, output_path=src_tmp_embedded_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
+                            src_tmp_output = subtitle_embedder(media_filepath)
                             pbar.finish()
 
-                        if os.path.isfile(src_dst_tmp_output):
-                            shutil.copy(src_dst_tmp_output, embedded_media_filepath)
-                            print(f"Subtitles embedded {media_type} file saved as  : '{embedded_media_filepath}'")
-                            completed_tasks += 1
-                            #print(f"\ndo_translate == True, media_type == 'video', args.embed_src == True and args.embed_dst == True : completed_tasks = {completed_tasks}\n")
-                        else:
-                            print("Unknown error!")
+                            if os.path.isfile(src_tmp_output):
+                                shutil.copy(src_tmp_output, embedded_media_filepath)
+                                os.remove(src_tmp_output)
+                                print(f"Subtitles embedded {media_type} file saved as  : '{embedded_media_filepath}'")
+                                completed_tasks += 1
+                                #print(f"\ndo_translate == False, media_type == 'video', args.embed_src == True: completed_tasks = {completed_tasks}\n")
 
-                        if os.path.isfile(src_dst_tmp_output):
-                            os.remove(src_dst_tmp_output)
-                        if os.path.isfile(src_tmp_output):
-                            os.remove(src_tmp_output)
 
-                    elif media_type == "video" and args.embed_src == True and args.embed_dst == False:
+                    elif do_translate == True:
 
-                        ffmpeg_src_language_code = language.ffmpeg_code_of_code[args.src_language]
+                        media_type = check_file_type(media_filepath, error_messages_callback=show_error_messages)
 
-                        base, ext = os.path.splitext(media_filepath)
+                        if media_type == "audio" and (args.embed_src == True or args.embed_src == True):
+                            print("Subtitles can only be embedded into video file, not audio file")
 
-                        if ext[1:] == "ts":
-                            media_format = "mp4"
-                        else:
-                            media_format = ext[1:]
+                        if media_type == "video" and args.embed_src == True and args.embed_dst == True:
 
-                        src_tmp_embedded_media_filepath = f"{base}.{ffmpeg_src_language_code}.tmp.embedded.{media_format}"
-                        embedded_media_filepath = f"{base}.{ffmpeg_src_language_code}.embedded.{media_format}"
+                            ffmpeg_src_language_code = language.ffmpeg_code_of_code[args.src_language]
+                            ffmpeg_dst_language_code = language.ffmpeg_code_of_code[args.dst_language]
 
-                        widgets = [f"Embedding '{ffmpeg_src_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
-                        pbar = ProgressBar(widgets=widgets, maxval=100).start()
-                        subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=src_subtitle_filepath, language=ffmpeg_src_language_code, output_path=src_tmp_embedded_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
-                        src_tmp_output = subtitle_embedder(media_filepath)
-                        pbar.finish()
+                            base, ext = os.path.splitext(media_filepath)
 
-                        if os.path.isfile(src_tmp_output):
-                            shutil.copy(src_tmp_output, embedded_media_filepath)
-                            os.remove(src_tmp_embedded_media_filepath)
-                            print(f"Subtitles embedded {media_type} file saved as  : '{embedded_media_filepath}'")
-                            completed_tasks += 1
-                            #print(f"\ndo_translate == True, media_type == 'video', args.embed_src == True and args.embed_dst == False : completed_tasks = {completed_tasks}\n")
-                        else:
-                            print("Unknown error!")
+                            if ext[1:] == "ts":
+                                media_format = "mp4"
+                            else:
+                                media_format = ext[1:]
 
-                    elif media_type == "video" and args.embed_src == False and args.embed_dst == True:
+                            src_tmp_embedded_media_filepath = f"{base}.{ffmpeg_src_language_code}.tmp.embedded.{media_format}"
+                            src_dst_tmp_embedded_media_filepath = f"{base}.{ffmpeg_src_language_code}.{ffmpeg_dst_language_code}.tmp.embedded.{media_format}"
+                            embedded_media_filepath = f"{base}.{ffmpeg_src_language_code}.{ffmpeg_dst_language_code}.embedded.{media_format}"
 
-                        ffmpeg_dst_language_code = language.ffmpeg_code_of_code[args.dst_language]
+                            '''
+                            # USING FUNCTION
+                            src_tmp_output = embed_subtitle_into_media(media_filepath, media_type, src_subtitle_filepath, ffmpeg_src_language_code, src_tmp_embedded_media_filepath)
+                            if os.path.isfile(src_tmp_output) and os.path.isfile(dst_subtitle_filepath):
+                                src_dst_tmp_output = embed_subtitle_into_media(src_tmp_embedded_media_filepath, media_type, dst_subtitle_filepath, ffmpeg_dst_language_code, src_dst_tmp_embedded_media_filepath)
+                            '''
 
-                        base, ext = os.path.splitext(media_filepath)
+                            # USING CLASS
+                            widgets = [f"Embedding '{ffmpeg_src_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
+                            pbar = ProgressBar(widgets=widgets, maxval=100).start()
+                            subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=src_subtitle_filepath, language=ffmpeg_src_language_code, output_path=src_tmp_embedded_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
+                            src_tmp_output = subtitle_embedder(media_filepath)
+                            pbar.finish()
 
-                        if ext[1:] == "ts":
-                            media_format = "mp4"
-                        else:
-                            media_format = ext[1:]
+                            if os.path.isfile(src_tmp_output) and os.path.isfile(dst_subtitle_filepath):
+                                widgets = [f"Embedding '{ffmpeg_dst_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
+                                pbar = ProgressBar(widgets=widgets, maxval=100).start()
+                                subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=dst_subtitle_filepath, language=ffmpeg_dst_language_code, output_path=src_dst_tmp_embedded_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
+                                src_dst_tmp_output = subtitle_embedder(src_tmp_output)
+                                pbar.finish()
 
-                        dst_tmp_embedded_media_filepath = f"{base}.{ffmpeg_dst_language_code}.tmp.embedded.{media_format}"
-                        embedded_media_filepath = f"{base}.{ffmpeg_dst_language_code}.embedded.{media_format}"
+                            if os.path.isfile(src_dst_tmp_output):
+                                shutil.copy(src_dst_tmp_output, embedded_media_filepath)
+                                print(f"Subtitles embedded {media_type} file saved as  : '{embedded_media_filepath}'")
+                                completed_tasks += 1
+                                #print(f"\ndo_translate == True, media_type == 'video', args.embed_src == True and args.embed_dst == True : completed_tasks = {completed_tasks}\n")
+                            else:
+                                print("Unknown error!")
 
-                        widgets = [f"Embedding '{ffmpeg_dst_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
-                        pbar = ProgressBar(widgets=widgets, maxval=100).start()
-                        subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=dst_subtitle_filepath, language=ffmpeg_dst_language_code, output_path=dst_tmp_embedded_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
-                        dst_tmp_output = subtitle_embedder(media_filepath)
-                        pbar.finish()
+                            if os.path.isfile(src_dst_tmp_output):
+                                os.remove(src_dst_tmp_output)
+                            if os.path.isfile(src_tmp_output):
+                                os.remove(src_tmp_output)
 
-                        if os.path.isfile(dst_tmp_output):
-                            shutil.copy(dst_tmp_output, embedded_media_filepath)
-                            os.remove(dst_tmp_output)
-                            print(f"Subtitles embedded {media_type} file saved as  : '{embedded_media_filepath}'")
-                            completed_tasks += 1
-                            #print(f"\ndo_translate == True, media_type == 'video', args.embed_src == False and args.embed_dst == True : completed_tasks = {completed_tasks}\n")
-                        else:
-                            print("Unknown error!")
+                        elif media_type == "video" and args.embed_src == True and args.embed_dst == False:
 
-            print('')
+                            ffmpeg_src_language_code = language.ffmpeg_code_of_code[args.src_language]
 
-            #print(f"len(media_filepaths) = {len(media_filepaths)}")
-            #print(f"completed_tasks = {completed_tasks}\n")
+                            base, ext = os.path.splitext(media_filepath)
 
-            if len(media_filepaths)>0 and completed_tasks == len(media_filepaths):
-                transcribe_end_time = time.time()
-                transcribe_elapsed_time = transcribe_end_time - transcribe_start_time
-                transcribe_elapsed_time_seconds = timedelta(seconds=int(transcribe_elapsed_time))
-                transcribe_elapsed_time_str = str(transcribe_elapsed_time_seconds)
-                hour, minute, second = transcribe_elapsed_time_str.split(":")
-                msg = "Total running time                      : %s:%s:%s" %(hour.zfill(2), minute, second)
-                print(msg)
+                            if ext[1:] == "ts":
+                                media_format = "mp4"
+                            else:
+                                media_format = ext[1:]
 
-        except KeyboardInterrupt:
-            pbar.finish()
-            pool.terminate()
-            pool.close()
-            pool.join()
-            print("Cancelling all tasks")
+                            src_tmp_embedded_media_filepath = f"{base}.{ffmpeg_src_language_code}.tmp.embedded.{media_format}"
+                            embedded_media_filepath = f"{base}.{ffmpeg_src_language_code}.embedded.{media_format}"
 
-            if sys.platform == "win32":
-                stop_ffmpeg_windows(error_messages_callback=show_error_messages)
-            else:
-                stop_ffmpeg_linux(error_messages_callback=show_error_messages)
+                            widgets = [f"Embedding '{ffmpeg_src_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
+                            pbar = ProgressBar(widgets=widgets, maxval=100).start()
+                            subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=src_subtitle_filepath, language=ffmpeg_src_language_code, output_path=src_tmp_embedded_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
+                            src_tmp_output = subtitle_embedder(media_filepath)
+                            pbar.finish()
 
-            remove_temp_files("flac")
-            remove_temp_files("wav")
-            return 1
+                            if os.path.isfile(src_tmp_output):
+                                shutil.copy(src_tmp_output, embedded_media_filepath)
+                                os.remove(src_tmp_embedded_media_filepath)
+                                print(f"Subtitles embedded {media_type} file saved as  : '{embedded_media_filepath}'")
+                                completed_tasks += 1
+                                #print(f"\ndo_translate == True, media_type == 'video', args.embed_src == True and args.embed_dst == False : completed_tasks = {completed_tasks}\n")
+                            else:
+                                print("Unknown error!")
 
-        except Exception as e:
-            if not KeyboardInterrupt in str(e):
+                        elif media_type == "video" and args.embed_src == False and args.embed_dst == True:
+
+                            ffmpeg_dst_language_code = language.ffmpeg_code_of_code[args.dst_language]
+
+                            base, ext = os.path.splitext(media_filepath)
+
+                            if ext[1:] == "ts":
+                                media_format = "mp4"
+                            else:
+                                media_format = ext[1:]
+
+                            dst_tmp_embedded_media_filepath = f"{base}.{ffmpeg_dst_language_code}.tmp.embedded.{media_format}"
+                            embedded_media_filepath = f"{base}.{ffmpeg_dst_language_code}.embedded.{media_format}"
+
+                            widgets = [f"Embedding '{ffmpeg_dst_language_code}' subtitles into {media_type}    : ", Percentage(), ' ', Bar(marker="#"), ' ', ETA()]
+                            pbar = ProgressBar(widgets=widgets, maxval=100).start()
+                            subtitle_embedder = MediaSubtitleEmbedder(subtitle_path=dst_subtitle_filepath, language=ffmpeg_dst_language_code, output_path=dst_tmp_embedded_media_filepath, progress_callback=show_progress, error_messages_callback=show_error_messages)
+                            dst_tmp_output = subtitle_embedder(media_filepath)
+                            pbar.finish()
+
+                            if os.path.isfile(dst_tmp_output):
+                                shutil.copy(dst_tmp_output, embedded_media_filepath)
+                                os.remove(dst_tmp_output)
+                                print(f"Subtitles embedded {media_type} file saved as  : '{embedded_media_filepath}'")
+                                completed_tasks += 1
+                                #print(f"\ndo_translate == True, media_type == 'video', args.embed_src == False and args.embed_dst == True : completed_tasks = {completed_tasks}\n")
+                            else:
+                                print("Unknown error!")
+
+                print('')
+
+            except KeyboardInterrupt:
                 pbar.finish()
                 pool.terminate()
                 pool.close()
                 pool.join()
-                print(e)
+                print("Cancelling all tasks")
 
                 if sys.platform == "win32":
                     stop_ffmpeg_windows(error_messages_callback=show_error_messages)
@@ -3680,6 +3658,35 @@ def main():
                 remove_temp_files("flac")
                 remove_temp_files("wav")
                 return 1
+
+            except Exception as e:
+                if not KeyboardInterrupt in str(e):
+                    pbar.finish()
+                    pool.terminate()
+                    pool.close()
+                    pool.join()
+                    print(e)
+
+                    if sys.platform == "win32":
+                        stop_ffmpeg_windows(error_messages_callback=show_error_messages)
+                    else:
+                        stop_ffmpeg_linux(error_messages_callback=show_error_messages)
+
+                    remove_temp_files("flac")
+                    remove_temp_files("wav")
+                    return 1
+
+    #print(f"len(media_filepaths) = {len(media_filepaths)}")
+    #print(f"completed_tasks = {completed_tasks}\n")
+
+    if len(media_filepaths)>0 and completed_tasks == len(media_filepaths):
+        transcribe_end_time = time.time()
+        transcribe_elapsed_time = transcribe_end_time - transcribe_start_time
+        transcribe_elapsed_time_seconds = timedelta(seconds=int(transcribe_elapsed_time))
+        transcribe_elapsed_time_str = str(transcribe_elapsed_time_seconds)
+        hour, minute, second = transcribe_elapsed_time_str.split(":")
+        msg = "Total running time                      : %s:%s:%s" %(hour.zfill(2), minute, second)
+        print(msg)
 
     if pool:
         pool.close()
