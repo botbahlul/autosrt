@@ -28,7 +28,7 @@ import shlex
 import shutil
 
 
-VERSION = "1.4.8"
+VERSION = "1.4.9"
 
 
 class Language:
@@ -3679,7 +3679,7 @@ def main():
     #print(f"len(media_filepaths) = {len(media_filepaths)}")
     #print(f"completed_tasks = {completed_tasks}\n")
 
-    if len(media_filepaths)>0 and completed_tasks == len(media_filepaths):
+    if len(media_filepaths)>0 and len(processed_list)>0 and completed_tasks == len(media_filepaths) + len(processed_list):
         transcribe_end_time = time.time()
         transcribe_elapsed_time = transcribe_end_time - transcribe_start_time
         transcribe_elapsed_time_seconds = timedelta(seconds=int(transcribe_elapsed_time))
@@ -3687,6 +3687,15 @@ def main():
         hour, minute, second = transcribe_elapsed_time_str.split(":")
         msg = "Total running time                      : %s:%s:%s" %(hour.zfill(2), minute, second)
         print(msg)
+    elif len(media_filepaths)>0 and completed_tasks == len(media_filepaths):
+        transcribe_end_time = time.time()
+        transcribe_elapsed_time = transcribe_end_time - transcribe_start_time
+        transcribe_elapsed_time_seconds = timedelta(seconds=int(transcribe_elapsed_time))
+        transcribe_elapsed_time_str = str(transcribe_elapsed_time_seconds)
+        hour, minute, second = transcribe_elapsed_time_str.split(":")
+        msg = "Total running time                      : %s:%s:%s" %(hour.zfill(2), minute, second)
+        print(msg)
+
 
     if pool:
         pool.close()
