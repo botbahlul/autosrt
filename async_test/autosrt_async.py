@@ -1775,8 +1775,8 @@ async def main():
             print("{} is not exist".format(arg))
 
     endpoint_config = test_translation_endpoint(
-        args.dst_language,
         args.src_language,
+        args.dst_language,
         error_messages_callback=show_error_messages
     )
 
