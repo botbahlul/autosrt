@@ -25,7 +25,7 @@ from progressbar import ProgressBar, Percentage, Bar, ETA
 from ffmpeg_progress_yield import FfmpegProgress
 
 
-VERSION = "1.2.9"
+VERSION = "1.4.10"
 
 # ================================================================
 # DEFAULT SETTINGS
