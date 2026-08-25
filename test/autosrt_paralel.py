@@ -1,1024 +1,1243 @@
 #!/usr/bin/env python3.8
-# ORIGINAL AUTOSUB IMPORTS
+# -*- coding: utf-8 -*-
+
 from __future__ import absolute_import, print_function, unicode_literals
+
 import argparse
 import audioop
+import datetime
+import json
 import math
 import multiprocessing
 import os
+import re
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import wave
-import json
+
+import datetime
+from glob import glob
+from threading import Thread
+from typing import Any, Callable, Iterator, List, Optional, Union
+
+import httpx
+import pysrt
 import requests
+import six
+
 try:
     from json.decoder import JSONDecodeError
 except ImportError:
     JSONDecodeError = ValueError
-from progressbar import ProgressBar, Percentage, Bar, ETA
-import pysrt
-import six
-# ADDITIONAL IMPORT
-#import ffmpeg_progress_yield
-#from ffmpeg_progress_yield import FfmpegProgress
-import magic
-from glob import glob
-import threading
-from threading import Thread
-import datetime
 
-VERSION = "1.2.12"
-
-#======================================================== ffmpeg_progress_yield ========================================================#
+try:
+    from progressbar import ProgressBar, Percentage, Bar, ETA
+except ImportError:
+    ProgressBar = Percentage = Bar = ETA = None
 
 
-import re
-#import subprocess
-from typing import Any, Callable, Iterator, List, Optional, Union
+VERSION = "1.4.10"
 
 
-def to_ms(**kwargs: Union[float, int, str]) -> int:
+# ================================================================
+# GLOBALS
+# ================================================================
+
+thread_transcribe = None
+thread_transcribe_starter = None
+pool = {}
+do_translate = False
+completed_tasks = 0
+wav_converter_pbar = None
+start_time = None
+end_time = None
+endpoint_config = None
+
+
+# ================================================================
+# FFMPEG PROGRESS
+# ================================================================
+
+def to_ms(**kwargs):
     hour = int(kwargs.get("hour", 0))
     minute = int(kwargs.get("min", 0))
     sec = int(kwargs.get("sec", 0))
     ms = int(kwargs.get("ms", 0))
 
-    return (hour * 60 * 60 * 1000) + (minute * 60 * 1000) + (sec * 1000) + ms
+    return (
+        (hour * 60 * 60 * 1000)
+        + (minute * 60 * 1000)
+        + (sec * 1000)
+        + ms
+    )
 
 
-def _probe_duration(cmd: List[str]) -> Optional[int]:
-    '''
-    Get the duration via ffprobe from input media file
-    in case ffmpeg was run with loglevel=error.
+def _probe_duration(cmd):
+    """
+    Get media duration using ffprobe.
+    """
 
-    Args:
-        cmd (List[str]): A list of command line elements, e.g. ["ffmpeg", "-i", ...]
-
-    Returns:
-        Optional[int]: The duration in milliseconds.
-    '''
-
-    def _get_file_name(cmd: List[str]) -> Optional[str]:
+    def _get_file_name(command):
         try:
-            idx = cmd.index("-i")
-            return cmd[idx + 1]
-        except ValueError:
+            idx = command.index("-i")
+            return command[idx + 1]
+        except (ValueError, IndexError):
             return None
 
     file_name = _get_file_name(cmd)
+
     if file_name is None:
         return None
 
     try:
-        if sys.platform == "win32":
-            output = subprocess.check_output(
-                [
-                    "ffprobe",
-                    "-loglevel",
-                    "-1",
-                    "-hide_banner",
-                    "-show_entries",
-                    "format=duration",
-                    "-of",
-                    "default=noprint_wrappers=1:nokey=1",
-                    file_name,
-                ],
-                universal_newlines=True,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-        else:
-            output = subprocess.check_output(
-                [
-                    "ffprobe",
-                    "-loglevel",
-                    "-1",
-                    "-hide_banner",
-                    "-show_entries",
-                    "format=duration",
-                    "-of",
-                    "default=noprint_wrappers=1:nokey=1",
-                    file_name,
-                ],
-                universal_newlines=True,
-            )
 
-        return int(float(output.strip()) * 1000)
+        command = [
+            "ffprobe",
+            "-loglevel", "error",
+            "-hide_banner",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            file_name
+        ]
+
+        kwargs = {
+            "universal_newlines": True
+        }
+
+        if sys.platform == "win32":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+        output = subprocess.check_output(command, **kwargs)
+
+        value = output.strip()
+
+        if not value:
+            return None
+
+        return int(float(value) * 1000)
+
     except Exception:
-        # TODO: add logging
         return None
 
 
-def _uses_error_loglevel(cmd: List[str]) -> bool:
+def _uses_error_loglevel(cmd):
     try:
         idx = cmd.index("-loglevel")
-        if cmd[idx + 1] == "error":
-            return True
-        else:
-            return False
+        return idx + 1 < len(cmd) and cmd[idx + 1] == "error"
     except ValueError:
         return False
 
 
-class FfmpegProgress:
+class FfmpegProgress(object):
+
     DUR_REGEX = re.compile(
-        r"Duration: (?P<hour>\d{2}):(?P<min>\d{2}):(?P<sec>\d{2})\.(?P<ms>\d{2})"
+        r"Duration: (?P<hour>\d{2}):(?P<min>\d{2}):"
+        r"(?P<sec>\d{2})\.(?P<ms>\d{2})"
     )
+
     TIME_REGEX = re.compile(
-        r"out_time=(?P<hour>\d{2}):(?P<min>\d{2}):(?P<sec>\d{2})\.(?P<ms>\d{2})"
+        r"out_time=(?P<hour>\d{2}):(?P<min>\d{2}):"
+        r"(?P<sec>\d{2})\.(?P<ms>\d{2})"
     )
 
-    def __init__(self, cmd: List[str], dry_run: bool = False) -> None:
-        '''Initialize the FfmpegProgress class.
-
-        Args:
-            cmd (List[str]): A list of command line elements, e.g. ["ffmpeg", "-i", ...]
-            dry_run (bool, optional): Only show what would be done. Defaults to False.
-        '''
+    def __init__(self, cmd, dry_run=False):
         self.cmd = cmd
-        self.stderr: Union[str, None] = None
+        self.stderr = None
         self.dry_run = dry_run
-        self.process: Any = None
-        self.stderr_callback: Union[Callable[[str], None], None] = None
+        self.process = None
+        self.stderr_callback = None
+
         if sys.platform == "win32":
+
             self.base_popen_kwargs = {
-                "stdin": subprocess.PIPE,  # Apply stdin isolation by creating separate pipe.
+                "stdin": subprocess.PIPE,
                 "stdout": subprocess.PIPE,
                 "stderr": subprocess.STDOUT,
                 "universal_newlines": False,
-                "shell": True,
+                "shell": False
             }
+
         else:
+
             self.base_popen_kwargs = {
-                "stdin": subprocess.PIPE,  # Apply stdin isolation by creating separate pipe.
+                "stdin": subprocess.PIPE,
                 "stdout": subprocess.PIPE,
                 "stderr": subprocess.STDOUT,
-                "universal_newlines": False,
+                "universal_newlines": False
             }
 
-    def set_stderr_callback(self, callback: Callable[[str], None]) -> None:
-        '''
-        Set a callback function to be called on stderr output.
-        The callback function must accept a single string argument.
-        Note that this is called on every line of stderr output, so it can be called a lot.
-        Also note that stdout/stderr are joined into one stream, so you might get stdout output in the callback.
-
-        Args:
-            callback (Callable[[str], None]): A callback function that accepts a single string argument.
-        '''
-        if not callable(callback) or len(callback.__code__.co_varnames) != 1:
-            raise ValueError(
-                "Callback must be a function that accepts only one argument"
-            )
+    def set_stderr_callback(self, callback):
+        if not callable(callback):
+            raise ValueError("Callback must be callable")
 
         self.stderr_callback = callback
 
     def run_command_with_progress(
-        self, popen_kwargs=None, duration_override: Union[float, None] = None
-    ) -> Iterator[int]:
-        '''
-        Run an ffmpeg command, trying to capture the process output and calculate
-        the duration / progress.
-        Yields the progress in percent.
+        self,
+        popen_kwargs=None,
+        duration_override=None
+    ):
 
-        Args:
-            popen_kwargs (dict, optional): A dict to specify extra arguments to the popen call, e.g. { creationflags: CREATE_NO_WINDOW }
-            duration_override (float, optional): The duration in seconds. If not specified, it will be calculated from the ffmpeg output.
-
-        Raises:
-            RuntimeError: If the command fails, an exception is raised.
-
-        Yields:
-            Iterator[int]: A generator that yields the progress in percent.
-        '''
         if self.dry_run:
-            return self.cmd
+            yield 0
+            yield 100
+            return
 
-        total_dur: Union[None, int] = None
+        total_dur = None
+
         if _uses_error_loglevel(self.cmd):
             total_dur = _probe_duration(self.cmd)
 
         cmd_with_progress = (
-            [self.cmd[0]] + ["-progress", "-", "-nostats"] + self.cmd[1:]
+            [self.cmd[0]]
+            + ["-progress", "-", "-nostats"]
+            + self.cmd[1:]
         )
 
         stderr = []
+
         base_popen_kwargs = self.base_popen_kwargs.copy()
+
         if popen_kwargs is not None:
             base_popen_kwargs.update(popen_kwargs)
 
-        if sys.platform == "wind32":
-            self.process = subprocess.Popen(
-                cmd_with_progress,
-                **base_popen_kwargs,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )  # type: ignore
-        else:
-            self.process = subprocess.Popen(
-                cmd_with_progress,
-                **base_popen_kwargs,
-            )  # type: ignore
+        if sys.platform == "win32":
+            base_popen_kwargs["creationflags"] = (
+                subprocess.CREATE_NO_WINDOW
+            )
+
+        self.process = subprocess.Popen(
+            cmd_with_progress,
+            **base_popen_kwargs
+        )
 
         yield 0
 
         while True:
+
             if self.process.stdout is None:
-                continue
-
-            stderr_line = (
-                self.process.stdout.readline().decode("utf-8", errors="replace").strip()
-            )
-
-            if self.stderr_callback:
-                self.stderr_callback(stderr_line)
-
-            if stderr_line == "" and self.process.poll() is not None:
                 break
 
-            stderr.append(stderr_line.strip())
+            raw_line = self.process.stdout.readline()
 
+            if not raw_line:
+                if self.process.poll() is not None:
+                    break
+                continue
+
+            stderr_line = raw_line.decode(
+                "utf-8",
+                errors="replace"
+            ).strip()
+
+            if self.stderr_callback:
+                try:
+                    self.stderr_callback(stderr_line)
+                except Exception:
+                    pass
+
+            stderr.append(stderr_line)
             self.stderr = "\n".join(stderr)
 
             if total_dur is None:
-                total_dur_match = self.DUR_REGEX.search(stderr_line)
+
+                total_dur_match = self.DUR_REGEX.search(
+                    stderr_line
+                )
+
                 if total_dur_match:
-                    total_dur = to_ms(**total_dur_match.groupdict())
+
+                    total_dur = to_ms(
+                        **total_dur_match.groupdict()
+                    )
+
                     continue
-                elif duration_override is not None:
-                    # use the override (should apply in the first loop)
-                    total_dur = int(duration_override * 1000)
+
+                if duration_override is not None:
+
+                    total_dur = int(
+                        float(duration_override) * 1000
+                    )
+
                     continue
 
             if total_dur:
-                progress_time = FfmpegProgress.TIME_REGEX.search(stderr_line)
-                if progress_time:
-                    elapsed_time = to_ms(**progress_time.groupdict())
-                    yield int(elapsed_time * 100/ total_dur)
 
-        if self.process is None or self.process.returncode != 0:
-            #print(self.process)
-            #print(self.process.returncode)
-            _pretty_stderr = "\n".join(stderr)
-            raise RuntimeError(f"Error running command {self.cmd}: {_pretty_stderr}")
+                progress_time = self.TIME_REGEX.search(
+                    stderr_line
+                )
+
+                if progress_time:
+
+                    elapsed_time = to_ms(
+                        **progress_time.groupdict()
+                    )
+
+                    progress = int(
+                        elapsed_time * 100 / total_dur
+                    )
+
+                    progress = max(
+                        0,
+                        min(100, progress)
+                    )
+
+                    yield progress
+
+        return_code = self.process.wait()
+
+        if return_code != 0:
+
+            pretty_stderr = "\n".join(stderr)
+
+            self.process = None
+
+            raise RuntimeError(
+                "Error running command {}: {}".format(
+                    self.cmd,
+                    pretty_stderr
+                )
+            )
+
+        self.process = None
 
         yield 100
-        self.process = None
 
-    def quit_gracefully(self) -> None:
-        '''
-        Quit the ffmpeg process by sending 'q'
+    def quit_gracefully(self):
 
-        Raises:
-            RuntimeError: If no process is found.
-        '''
         if self.process is None:
-            raise RuntimeError("No process found. Did you run the command?")
+            raise RuntimeError(
+                "No process found. Did you run the command?"
+            )
 
-        self.process.communicate(input=b"q")
-        self.process.kill()
-        self.process = None
+        try:
+            self.process.communicate(input=b"q")
+        finally:
+            if self.process.poll() is None:
+                self.process.kill()
 
-    def quit(self) -> None:
-        '''
-        Quit the ffmpeg process by sending SIGKILL.
+            self.process = None
 
-        Raises:
-            RuntimeError: If no process is found.
-        '''
+    def quit(self):
+
         if self.process is None:
-            raise RuntimeError("No process found. Did you run the command?")
+            raise RuntimeError(
+                "No process found. Did you run the command?"
+            )
 
-        self.process.kill()
-        self.process = None
+        try:
+            self.process.kill()
+        finally:
+            self.process = None
 
 
-#=======================================================================================================================================#
-
+# ================================================================
+# PROCESS CONTROL
+# ================================================================
 
 def stop_ffmpeg_windows(error_messages_callback=None):
+
     try:
-        tasklist_output = subprocess.check_output(["tasklist"], creationflags=subprocess.CREATE_NO_WINDOW).decode("utf-8")
-        ffmpeg_pid = None
-        for line in tasklist_output.split("\n"):
-            if "ffmpeg" in line:
-                ffmpeg_pid = line.split()[1]
-                break
-        if ffmpeg_pid:
-            devnull = open(os.devnull, "w")
-            subprocess.Popen(["taskkill", "/F", "/T", "/PID", ffmpeg_pid], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+
+        output = subprocess.check_output(
+            ["tasklist"],
+            creationflags=subprocess.CREATE_NO_WINDOW
+        ).decode(
+            "utf-8",
+            errors="replace"
+        )
+
+        ffmpeg_pids = []
+
+        for line in output.splitlines():
+
+            parts = line.split()
+
+            if len(parts) >= 2:
+                process_name = parts[0].lower()
+
+                if process_name in (
+                    "ffmpeg.exe",
+                    "ffmpeg"
+                ):
+                    ffmpeg_pids.append(parts[1])
+
+        for pid in ffmpeg_pids:
+
+            subprocess.call(
+                [
+                    "taskkill",
+                    "/F",
+                    "/T",
+                    "/PID",
+                    pid
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
 
     except KeyboardInterrupt:
+
         if error_messages_callback:
-            error_messages_callback("Cancelling all tasks")
+            error_messages_callback(
+                "Cancelling all tasks"
+            )
         else:
             print("Cancelling all tasks")
-        return
 
     except Exception as e:
+
         if error_messages_callback:
-            error_messages_callback("stop_ffmpeg_windows : {}".format(e))
+            error_messages_callback(
+                "stop_ffmpeg_windows : {}".format(e)
+            )
         else:
             print(e)
-        return
 
 
 def stop_ffmpeg_linux(error_messages_callback=None):
-    process_name = "ffmpeg"
+
     try:
-        output = subprocess.check_output(["ps", "-ef"])
-        pid = [line.split()[1] for line in output.decode("utf-8").split("\n") if process_name in line][0]
-        subprocess.call(["kill", "-9", str(pid)])
-        #print(f"{process_name} has been killed")
-    except IndexError:
-        #print(f"{process_name} is not running")
-        pass
+
+        output = subprocess.check_output(
+            ["ps", "-eo", "pid,comm"]
+        ).decode(
+            "utf-8",
+            errors="replace"
+        )
+
+        for line in output.splitlines():
+
+            parts = line.split()
+
+            if len(parts) >= 2:
+
+                pid = parts[0]
+                process_name = parts[1].lower()
+
+                if process_name == "ffmpeg":
+
+                    try:
+                        subprocess.call(
+                            ["kill", "-9", pid]
+                        )
+                    except Exception:
+                        pass
 
     except KeyboardInterrupt:
+
         if error_messages_callback:
-            error_messages_callback("Cancelling all tasks")
+            error_messages_callback(
+                "Cancelling all tasks"
+            )
         else:
             print("Cancelling all tasks")
-        return
 
     except Exception as e:
+
         if error_messages_callback:
-            error_messages_callback("stop_ffmpeg_linux : {}".format(e))
+            error_messages_callback(
+                "stop_ffmpeg_linux : {}".format(e)
+            )
         else:
             print(e)
-        return
 
 
-def remove_temp_files(extension, error_messages_callback=None):
+def remove_temp_files(
+    extension,
+    error_messages_callback=None
+):
+
     try:
+
         temp_dir = tempfile.gettempdir()
+
+        extension = extension.lower().lstrip(".")
+
         for root, dirs, files in os.walk(temp_dir):
-            for file in files:
-                if file.endswith("." + extension):
-                    os.remove(os.path.join(root, file))
+
+            for file_name in files:
+
+                if file_name.lower().endswith(
+                    "." + extension
+                ):
+
+                    file_path = os.path.join(
+                        root,
+                        file_name
+                    )
+
+                    try:
+                        os.remove(file_path)
+                    except OSError:
+                        pass
+
     except KeyboardInterrupt:
+
         if error_messages_callback:
-            error_messages_callback("Cancelling all tasks")
+            error_messages_callback(
+                "Cancelling all tasks"
+            )
         else:
             print("Cancelling all tasks")
-        return
 
     except Exception as e:
+
         if error_messages_callback:
-            error_messages_callback("remove_temp_files : {}".format(e))
+            error_messages_callback(
+                "remove_temp_files : {}".format(e)
+            )
         else:
             print(e)
-        return
 
 
-def is_same_language(src, dst, error_messages_callback=None):
+# ================================================================
+# LANGUAGE
+# ================================================================
+
+def is_same_language(
+    src,
+    dst,
+    error_messages_callback=None
+):
+
     try:
         return src.split("-")[0] == dst.split("-")[0]
+
     except Exception as e:
+
         if error_messages_callback:
-            error_messages_callback("is_same_language : ".format(e))
+            error_messages_callback(
+                "is_same_language : {}".format(e)
+            )
         else:
             print(e)
-        return
+
+        return False
 
 
-def is_video_file(file_path, error_messages_callback=None):
-    try:
-        mime_type = magic.from_file(file_path, mime=True)
-        return mime_type.startswith("video/")
-    except Exception as e:
-        if error_messages_callback:
-            error_messages_callback("is_video_file : {}".format(e))
-        else:
-            print(e)
-        return
+class Language(object):
 
-
-def is_audio_file(file_path, error_messages_callback=None):
-    try:
-        mime_type = magic.from_file(file_path, mime=True)
-        return mime_type.startswith("audio/")
-    except Exception as e:
-        if error_messages_callback:
-            error_messages_callback("is_audio_file : {}".format(e))
-        else:
-            print(e)
-        return
-
-
-class Language:
     def __init__(self):
-        self.list_codes = []
-        self.list_codes.append("af")
-        self.list_codes.append("sq")
-        self.list_codes.append("am")
-        self.list_codes.append("ar")
-        self.list_codes.append("hy")
-        self.list_codes.append("as")
-        self.list_codes.append("ay")
-        self.list_codes.append("az")
-        self.list_codes.append("bm")
-        self.list_codes.append("eu")
-        self.list_codes.append("be")
-        self.list_codes.append("bn")
-        self.list_codes.append("bho")
-        self.list_codes.append("bs")
-        self.list_codes.append("bg")
-        self.list_codes.append("ca")
-        self.list_codes.append("ceb")
-        self.list_codes.append("ny")
-        self.list_codes.append("zh-CN")
-        self.list_codes.append("zh-TW")
-        self.list_codes.append("co")
-        self.list_codes.append("hr")
-        self.list_codes.append("cs")
-        self.list_codes.append("da")
-        self.list_codes.append("dv")
-        self.list_codes.append("doi")
-        self.list_codes.append("nl")
-        self.list_codes.append("en")
-        self.list_codes.append("eo")
-        self.list_codes.append("et")
-        self.list_codes.append("ee")
-        self.list_codes.append("fil")
-        self.list_codes.append("fi")
-        self.list_codes.append("fr")
-        self.list_codes.append("fy")
-        self.list_codes.append("gl")
-        self.list_codes.append("ka")
-        self.list_codes.append("de")
-        self.list_codes.append("el")
-        self.list_codes.append("gn")
-        self.list_codes.append("gu")
-        self.list_codes.append("ht")
-        self.list_codes.append("ha")
-        self.list_codes.append("haw")
-        self.list_codes.append("he")
-        self.list_codes.append("hi")
-        self.list_codes.append("hmn")
-        self.list_codes.append("hu")
-        self.list_codes.append("is")
-        self.list_codes.append("ig")
-        self.list_codes.append("ilo")
-        self.list_codes.append("id")
-        self.list_codes.append("ga")
-        self.list_codes.append("it")
-        self.list_codes.append("ja")
-        self.list_codes.append("jv")
-        self.list_codes.append("kn")
-        self.list_codes.append("kk")
-        self.list_codes.append("km")
-        self.list_codes.append("rw")
-        self.list_codes.append("gom")
-        self.list_codes.append("ko")
-        self.list_codes.append("kri")
-        self.list_codes.append("kmr")
-        self.list_codes.append("ckb")
-        self.list_codes.append("ky")
-        self.list_codes.append("lo")
-        self.list_codes.append("la")
-        self.list_codes.append("lv")
-        self.list_codes.append("ln")
-        self.list_codes.append("lt")
-        self.list_codes.append("lg")
-        self.list_codes.append("lb")
-        self.list_codes.append("mk")
-        self.list_codes.append("mg")
-        self.list_codes.append("ms")
-        self.list_codes.append("ml")
-        self.list_codes.append("mt")
-        self.list_codes.append("mi")
-        self.list_codes.append("mr")
-        self.list_codes.append("mni-Mtei")
-        self.list_codes.append("lus")
-        self.list_codes.append("mn")
-        self.list_codes.append("my")
-        self.list_codes.append("ne")
-        self.list_codes.append("no")
-        self.list_codes.append("or")
-        self.list_codes.append("om")
-        self.list_codes.append("ps")
-        self.list_codes.append("fa")
-        self.list_codes.append("pl")
-        self.list_codes.append("pt")
-        self.list_codes.append("pa")
-        self.list_codes.append("qu")
-        self.list_codes.append("ro")
-        self.list_codes.append("ru")
-        self.list_codes.append("sm")
-        self.list_codes.append("sa")
-        self.list_codes.append("gd")
-        self.list_codes.append("nso")
-        self.list_codes.append("sr")
-        self.list_codes.append("st")
-        self.list_codes.append("sn")
-        self.list_codes.append("sd")
-        self.list_codes.append("si")
-        self.list_codes.append("sk")
-        self.list_codes.append("sl")
-        self.list_codes.append("so")
-        self.list_codes.append("es")
-        self.list_codes.append("su")
-        self.list_codes.append("sw")
-        self.list_codes.append("sv")
-        self.list_codes.append("tg")
-        self.list_codes.append("ta")
-        self.list_codes.append("tt")
-        self.list_codes.append("te")
-        self.list_codes.append("th")
-        self.list_codes.append("ti")
-        self.list_codes.append("ts")
-        self.list_codes.append("tr")
-        self.list_codes.append("tk")
-        self.list_codes.append("tw")
-        self.list_codes.append("uk")
-        self.list_codes.append("ur")
-        self.list_codes.append("ug")
-        self.list_codes.append("uz")
-        self.list_codes.append("vi")
-        self.list_codes.append("cy")
-        self.list_codes.append("xh")
-        self.list_codes.append("yi")
-        self.list_codes.append("yo")
-        self.list_codes.append("zu")
 
-        self.list_names = []
-        self.list_names.append("Afrikaans")
-        self.list_names.append("Albanian")
-        self.list_names.append("Amharic")
-        self.list_names.append("Arabic")
-        self.list_names.append("Armenian")
-        self.list_names.append("Assamese")
-        self.list_names.append("Aymara")
-        self.list_names.append("Azerbaijani")
-        self.list_names.append("Bambara")
-        self.list_names.append("Basque")
-        self.list_names.append("Belarusian")
-        self.list_names.append("Bengali")
-        self.list_names.append("Bhojpuri")
-        self.list_names.append("Bosnian")
-        self.list_names.append("Bulgarian")
-        self.list_names.append("Catalan")
-        self.list_names.append("Cebuano")
-        self.list_names.append("Chichewa")
-        self.list_names.append("Chinese (Simplified)")
-        self.list_names.append("Chinese (Traditional)")
-        self.list_names.append("Corsican")
-        self.list_names.append("Croatian")
-        self.list_names.append("Czech")
-        self.list_names.append("Danish")
-        self.list_names.append("Dhivehi")
-        self.list_names.append("Dogri")
-        self.list_names.append("Dutch")
-        self.list_names.append("English")
-        self.list_names.append("Esperanto")
-        self.list_names.append("Estonian")
-        self.list_names.append("Ewe")
-        self.list_names.append("Filipino")
-        self.list_names.append("Finnish")
-        self.list_names.append("French")
-        self.list_names.append("Frisian")
-        self.list_names.append("Galician")
-        self.list_names.append("Georgian")
-        self.list_names.append("German")
-        self.list_names.append("Greek")
-        self.list_names.append("Guarani")
-        self.list_names.append("Gujarati")
-        self.list_names.append("Haitian Creole")
-        self.list_names.append("Hausa")
-        self.list_names.append("Hawaiian")
-        self.list_names.append("Hebrew")
-        self.list_names.append("Hindi")
-        self.list_names.append("Hmong")
-        self.list_names.append("Hungarian")
-        self.list_names.append("Icelandic")
-        self.list_names.append("Igbo")
-        self.list_names.append("Ilocano")
-        self.list_names.append("Indonesian")
-        self.list_names.append("Irish")
-        self.list_names.append("Italian")
-        self.list_names.append("Japanese")
-        self.list_names.append("Javanese")
-        self.list_names.append("Kannada")
-        self.list_names.append("Kazakh")
-        self.list_names.append("Khmer")
-        self.list_names.append("Kinyarwanda")
-        self.list_names.append("Konkani")
-        self.list_names.append("Korean")
-        self.list_names.append("Krio")
-        self.list_names.append("Kurdish (Kurmanji)")
-        self.list_names.append("Kurdish (Sorani)")
-        self.list_names.append("Kyrgyz")
-        self.list_names.append("Lao")
-        self.list_names.append("Latin")
-        self.list_names.append("Latvian")
-        self.list_names.append("Lingala")
-        self.list_names.append("Lithuanian")
-        self.list_names.append("Luganda")
-        self.list_names.append("Luxembourgish")
-        self.list_names.append("Macedonian")
-        self.list_names.append("Malagasy")
-        self.list_names.append("Malay")
-        self.list_names.append("Malayalam")
-        self.list_names.append("Maltese")
-        self.list_names.append("Maori")
-        self.list_names.append("Marathi")
-        self.list_names.append("Meiteilon (Manipuri)")
-        self.list_names.append("Mizo")
-        self.list_names.append("Mongolian")
-        self.list_names.append("Myanmar (Burmese)")
-        self.list_names.append("Nepali")
-        self.list_names.append("Norwegian")
-        self.list_names.append("Odiya (Oriya)")
-        self.list_names.append("Oromo")
-        self.list_names.append("Pashto")
-        self.list_names.append("Persian")
-        self.list_names.append("Polish")
-        self.list_names.append("Portuguese")
-        self.list_names.append("Punjabi")
-        self.list_names.append("Quechua")
-        self.list_names.append("Romanian")
-        self.list_names.append("Russian")
-        self.list_names.append("Samoan")
-        self.list_names.append("Sanskrit")
-        self.list_names.append("Scots Gaelic")
-        self.list_names.append("Sepedi")
-        self.list_names.append("Serbian")
-        self.list_names.append("Sesotho")
-        self.list_names.append("Shona")
-        self.list_names.append("Sindhi")
-        self.list_names.append("Sinhala")
-        self.list_names.append("Slovak")
-        self.list_names.append("Slovenian")
-        self.list_names.append("Somali")
-        self.list_names.append("Spanish")
-        self.list_names.append("Sundanese")
-        self.list_names.append("Swahili")
-        self.list_names.append("Swedish")
-        self.list_names.append("Tajik")
-        self.list_names.append("Tamil")
-        self.list_names.append("Tatar")
-        self.list_names.append("Telugu")
-        self.list_names.append("Thai")
-        self.list_names.append("Tigrinya")
-        self.list_names.append("Tsonga")
-        self.list_names.append("Turkish")
-        self.list_names.append("Turkmen")
-        self.list_names.append("Twi (Akan)")
-        self.list_names.append("Ukrainian")
-        self.list_names.append("Urdu")
-        self.list_names.append("Uyghur")
-        self.list_names.append("Uzbek")
-        self.list_names.append("Vietnamese")
-        self.list_names.append("Welsh")
-        self.list_names.append("Xhosa")
-        self.list_names.append("Yiddish")
-        self.list_names.append("Yoruba")
-        self.list_names.append("Zulu")
+        self.list_codes = [
+            "af", "sq", "am", "ar", "hy", "as", "ay", "az",
+            "bm", "eu", "be", "bn", "bho", "bs", "bg", "ca",
+            "ceb", "ny", "zh-CN", "zh-TW", "co", "hr", "cs",
+            "da", "dv", "doi", "nl", "en", "eo", "et", "ee",
+            "fil", "fi", "fr", "fy", "gl", "ka", "de", "el",
+            "gn", "gu", "ht", "ha", "haw", "he", "hi", "hmn",
+            "hu", "is", "ig", "ilo", "id", "ga", "it", "ja",
+            "jv", "kn", "kk", "km", "rw", "gom", "ko", "kri",
+            "kmr", "ckb", "ky", "lo", "la", "lv", "ln", "lt",
+            "lg", "lb", "mk", "mg", "ms", "ml", "mt", "mi",
+            "mr", "mni-Mtei", "lus", "mn", "my", "ne", "no",
+            "or", "om", "ps", "fa", "pl", "pt", "pa", "qu",
+            "ro", "ru", "sm", "sa", "gd", "nso", "sr", "st",
+            "sn", "sd", "si", "sk", "sl", "so", "es", "su",
+            "sw", "sv", "tg", "ta", "tt", "te", "th", "ti",
+            "ts", "tr", "tk", "tw", "uk", "ur", "ug", "uz",
+            "vi", "cy", "xh", "yi", "yo", "zu"
+        ]
 
-        self.code_of_name = dict(zip(self.list_names, self.list_codes))
-        self.name_of_code = dict(zip(self.list_codes, self.list_names))
+        self.list_names = [
+            "Afrikaans", "Albanian", "Amharic", "Arabic",
+            "Armenian", "Assamese", "Aymara", "Azerbaijani",
+            "Bambara", "Basque", "Belarusian", "Bengali",
+            "Bhojpuri", "Bosnian", "Bulgarian", "Catalan",
+            "Cebuano", "Chichewa", "Chinese (Simplified)",
+            "Chinese (Traditional)", "Corsican", "Croatian",
+            "Czech", "Danish", "Dhivehi", "Dogri", "Dutch",
+            "English", "Esperanto", "Estonian", "Ewe",
+            "Filipino", "Finnish", "French", "Frisian",
+            "Galician", "Georgian", "German", "Greek",
+            "Guarani", "Gujarati", "Haitian Creole", "Hausa",
+            "Hawaiian", "Hebrew", "Hindi", "Hmong", "Hungarian",
+            "Icelandic", "Igbo", "Ilocano", "Indonesian",
+            "Irish", "Italian", "Japanese", "Javanese",
+            "Kannada", "Kazakh", "Khmer", "Kinyarwanda",
+            "Konkani", "Korean", "Krio", "Kurdish (Kurmanji)",
+            "Kurdish (Sorani)", "Kyrgyz", "Lao", "Latin",
+            "Latvian", "Lingala", "Lithuanian", "Luganda",
+            "Luxembourgish", "Macedonian", "Malagasy", "Malay",
+            "Malayalam", "Maltese", "Maori", "Marathi",
+            "Meiteilon (Manipuri)", "Mizo", "Mongolian",
+            "Myanmar (Burmese)", "Nepali", "Norwegian",
+            "Odiya (Oriya)", "Oromo", "Pashto", "Persian",
+            "Polish", "Portuguese", "Punjabi", "Quechua",
+            "Romanian", "Russian", "Samoan", "Sanskrit",
+            "Scots Gaelic", "Sepedi", "Serbian", "Sesotho",
+            "Shona", "Sindhi", "Sinhala", "Slovak",
+            "Slovenian", "Somali", "Spanish", "Sundanese",
+            "Swahili", "Swedish", "Tajik", "Tamil", "Tatar",
+            "Telugu", "Thai", "Tigrinya", "Tsonga", "Turkish",
+            "Turkmen", "Twi (Akan)", "Ukrainian", "Urdu",
+            "Uyghur", "Uzbek", "Vietnamese", "Welsh", "Xhosa",
+            "Yiddish", "Yoruba", "Zulu"
+        ]
 
-        self.dict = {
-                        'af': 'Afrikaans',
-                        'sq': 'Albanian',
-                        'am': 'Amharic',
-                        'ar': 'Arabic',
-                        'hy': 'Armenian',
-                        'as': 'Assamese',
-                        'ay': 'Aymara',
-                        'az': 'Azerbaijani',
-                        'bm': 'Bambara',
-                        'eu': 'Basque',
-                        'be': 'Belarusian',
-                        'bn': 'Bengali',
-                        'bho': 'Bhojpuri',
-                        'bs': 'Bosnian',
-                        'bg': 'Bulgarian',
-                        'ca': 'Catalan',
-                        'ceb': 'Cebuano',
-                        'ny': 'Chichewa',
-                        'zh-CN': 'Chinese (Simplified)',
-                        'zh-TW': 'Chinese (Traditional)',
-                        'co': 'Corsican',
-                        'hr': 'Croatian',
-                        'cs': 'Czech',
-                        'da': 'Danish',
-                        'dv': 'Dhivehi',
-                        'doi': 'Dogri',
-                        'nl': 'Dutch',
-                        'en': 'English',
-                        'eo': 'Esperanto',
-                        'et': 'Estonian',
-                        'ee': 'Ewe',
-                        'fil': 'Filipino',
-                        'fi': 'Finnish',
-                        'fr': 'French',
-                        'fy': 'Frisian',
-                        'gl': 'Galician',
-                        'ka': 'Georgian',
-                        'de': 'German',
-                        'el': 'Greek',
-                        'gn': 'Guarani',
-                        'gu': 'Gujarati',
-                        'ht': 'Haitian Creole',
-                        'ha': 'Hausa',
-                        'haw': 'Hawaiian',
-                        'he': 'Hebrew',
-                        'hi': 'Hindi',
-                        'hmn': 'Hmong',
-                        'hu': 'Hungarian',
-                        'is': 'Icelandic',
-                        'ig': 'Igbo',
-                        'ilo': 'Ilocano',
-                        'id': 'Indonesian',
-                        'ga': 'Irish',
-                        'it': 'Italian',
-                        'ja': 'Japanese',
-                        'jv': 'Javanese',
-                        'kn': 'Kannada',
-                        'kk': 'Kazakh',
-                        'km': 'Khmer',
-                        'rw': 'Kinyarwanda',
-                        'gom': 'Konkani',
-                        'ko': 'Korean',
-                        'kri': 'Krio',
-                        'kmr': 'Kurdish (Kurmanji)',
-                        'ckb': 'Kurdish (Sorani)',
-                        'ky': 'Kyrgyz',
-                        'lo': 'Lao',
-                        'la': 'Latin',
-                        'lv': 'Latvian',
-                        'ln': 'Lingala',
-                        'lt': 'Lithuanian',
-                        'lg': 'Luganda',
-                        'lb': 'Luxembourgish',
-                        'mk': 'Macedonian',
-                        'mg': 'Malagasy',
-                        'ms': 'Malay',
-                        'ml': 'Malayalam',
-                        'mt': 'Maltese',
-                        'mi': 'Maori',
-                        'mr': 'Marathi',
-                        'mni-Mtei': 'Meiteilon (Manipuri)',
-                        'lus': 'Mizo',
-                        'mn': 'Mongolian',
-                        'my': 'Myanmar (Burmese)',
-                        'ne': 'Nepali',
-                        'no': 'Norwegian',
-                        'or': 'Odiya (Oriya)',
-                        'om': 'Oromo',
-                        'ps': 'Pashto',
-                        'fa': 'Persian',
-                        'pl': 'Polish',
-                        'pt': 'Portuguese',
-                        'pa': 'Punjabi',
-                        'qu': 'Quechua',
-                        'ro': 'Romanian',
-                        'ru': 'Russian',
-                        'sm': 'Samoan',
-                        'sa': 'Sanskrit',
-                        'gd': 'Scots Gaelic',
-                        'nso': 'Sepedi',
-                        'sr': 'Serbian',
-                        'st': 'Sesotho',
-                        'sn': 'Shona',
-                        'sd': 'Sindhi',
-                        'si': 'Sinhala',
-                        'sk': 'Slovak',
-                        'sl': 'Slovenian',
-                        'so': 'Somali',
-                        'es': 'Spanish',
-                        'su': 'Sundanese',
-                        'sw': 'Swahili',
-                        'sv': 'Swedish',
-                        'tg': 'Tajik',
-                        'ta': 'Tamil',
-                        'tt': 'Tatar',
-                        'te': 'Telugu',
-                        'th': 'Thai',
-                        'ti': 'Tigrinya',
-                        'ts': 'Tsonga',
-                        'tr': 'Turkish',
-                        'tk': 'Turkmen',
-                        'tw': 'Twi (Akan)',
-                        'uk': 'Ukrainian',
-                        'ur': 'Urdu',
-                        'ug': 'Uyghur',
-                        'uz': 'Uzbek',
-                        'vi': 'Vietnamese',
-                        'cy': 'Welsh',
-                        'xh': 'Xhosa',
-                        'yi': 'Yiddish',
-                        'yo': 'Yoruba',
-                        'zu': 'Zulu',
-                    }
+        self.dict = dict(zip(
+            self.list_codes,
+            self.list_names
+        ))
+
+        self.code_of_name = dict(
+            zip(
+                self.list_names,
+                self.list_codes
+            )
+        )
+
+        self.name_of_code = self.dict.copy()
 
     def get_name(self, get_code):
-        return self.dict.get(get_code.lower(), "")
+
+        if not get_code:
+            return ""
+
+        return self.dict.get(
+            get_code.lower(),
+            ""
+        )
 
     def get_code(self, language):
-        for get_code, lang in self.dict.items():
-            if lang.lower() == language.lower():
-                return get_code
+
+        if not language:
+            return ""
+
+        language = language.lower()
+
+        for code, name in self.dict.items():
+
+            if name.lower() == language:
+                return code
+
         return ""
 
 
-class WavConverter:
+# ================================================================
+# FFMPEG / MEDIA DETECTION
+# ================================================================
+
+class WavConverter(object):
+
     @staticmethod
     def which(program):
+
         def is_exe(file_path):
-            return os.path.isfile(file_path) and os.access(file_path, os.X_OK)
+
+            return (
+                os.path.isfile(file_path)
+                and os.access(
+                    file_path,
+                    os.X_OK
+                )
+            )
 
         fpath, _ = os.path.split(program)
+
         if fpath:
+
             if is_exe(program):
                 return program
+
         else:
-            for path in os.environ["PATH"].split(os.pathsep):
+
+            for path in os.environ.get(
+                "PATH",
+                ""
+            ).split(os.pathsep):
+
                 path = path.strip('"')
-                exe_file = os.path.join(path, program)
+
+                exe_file = os.path.join(
+                    path,
+                    program
+                )
+
                 if is_exe(exe_file):
                     return exe_file
+
         return None
 
     @staticmethod
     def ffmpeg_check():
+
         if WavConverter.which("ffmpeg"):
             return "ffmpeg"
+
         if WavConverter.which("ffmpeg.exe"):
             return "ffmpeg.exe"
+
         return None
 
-    def __init__(self, channels=1, rate=48000, progress_callback=None, error_messages_callback=None):
+    @staticmethod
+    def ffprobe_check():
+
+        if WavConverter.which("ffprobe"):
+            return "ffprobe"
+
+        if WavConverter.which("ffprobe.exe"):
+            return "ffprobe.exe"
+
+        return None
+
+    def __init__(
+        self,
+        channels=1,
+        rate=48000,
+        progress_callback=None,
+        error_messages_callback=None
+    ):
+
         self.channels = channels
         self.rate = rate
         self.progress_callback = progress_callback
-        self.error_messages_callback = error_messages_callback
+        self.error_messages_callback = (
+            error_messages_callback
+        )
 
     def __call__(self, media_filepath):
-        temp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+
         if not os.path.isfile(media_filepath):
+
+            message = (
+                "The given file does not exist: {}"
+                .format(media_filepath)
+            )
+
             if self.error_messages_callback:
-                self.error_messages_callback("The given file does not exist: {0}".format(media_filepath))
+                self.error_messages_callback(message)
             else:
-                print("The given file does not exist: {0}".format(media_filepath))
-                raise Exception("Invalid file: {0}".format(media_filepath))
-        if not self.ffmpeg_check():
+                print(message)
+
+            return None
+
+        ffmpeg = self.ffmpeg_check()
+
+        if not ffmpeg:
+
+            message = (
+                "ffmpeg: Executable not found on machine."
+            )
+
             if self.error_messages_callback:
-                self.error_messages_callback("ffmpeg: Executable not found on machine.")
+                self.error_messages_callback(message)
             else:
-                print("ffmpeg: Executable not found on machine.")
-                raise Exception("Dependency not found: ffmpeg")
+                print(message)
+
+            return None
+
+        temp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+
+        temp_path = temp.name
+        temp.close()
 
         command = [
-                    "ffmpeg",
-                    "-y",
-                    "-i", media_filepath,
-                    "-ac", str(self.channels),
-                    "-ar", str(self.rate),
-                    "-loglevel", "error",
-                    "-hide_banner",
-                    temp.name
-                  ]
+            ffmpeg,
+            "-y",
+            "-i", media_filepath,
+            "-ac", str(self.channels),
+            "-ar", str(self.rate),
+            "-loglevel", "error",
+            "-hide_banner",
+            temp_path
+        ]
 
         try:
-            # RUNNING ffmpeg WITHOUT SHOWING PROGRESSS
-            #use_shell = True if os.name == "nt" else False
-            #subprocess.check_output(command, stdin=open(os.devnull), shell=use_shell)
 
-            # RUNNING ffmpeg WITH PROGRESSS
             ff = FfmpegProgress(command)
-            percentage = 0
+
             for progress in ff.run_command_with_progress():
-                percentage = progress
+
                 if self.progress_callback:
-                    self.progress_callback(media_filepath, percentage)
+                    self.progress_callback(
+                        media_filepath,
+                        progress
+                    )
 
-            temp.close()
-
-            return temp.name, self.rate
+            return temp_path, self.rate
 
         except KeyboardInterrupt:
+
+            try:
+                if os.path.isfile(temp_path):
+                    os.remove(temp_path)
+            except OSError:
+                pass
+
             if self.error_messages_callback:
-                self.error_messages_callback("Cancelling all tasks")
+                self.error_messages_callback(
+                    "Cancelling all tasks"
+                )
             else:
                 print("Cancelling all tasks")
-            return
+
+            return None
 
         except Exception as e:
+
+            try:
+                if os.path.isfile(temp_path):
+                    os.remove(temp_path)
+            except OSError:
+                pass
+
             if self.error_messages_callback:
                 self.error_messages_callback(e)
             else:
-                print("WavConverter : {}".format(e))
-            return
+                print(
+                    "WavConverter : {}".format(e)
+                )
+
+            return None
 
 
-class SpeechRegionFinder:
+def get_media_stream_types(
+    file_path,
+    error_messages_callback=None
+):
+    """
+    Detect all media streams using a single ffprobe call.
+
+    Returns:
+        set containing "video", "audio", etc.
+    """
+
+    try:
+
+        if not os.path.isfile(file_path):
+            return set()
+
+        ffprobe = WavConverter.ffprobe_check()
+
+        if not ffprobe:
+
+            message = (
+                "ffprobe: Executable not found on machine."
+            )
+
+            if error_messages_callback:
+                error_messages_callback(message)
+            else:
+                print(message)
+
+            return set()
+
+        command = [
+            ffprobe,
+            "-v", "error",
+            "-show_entries", "stream=codec_type",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            file_path
+        ]
+
+        kwargs = {
+            "stderr": subprocess.STDOUT,
+            "universal_newlines": True
+        }
+
+        if sys.platform == "win32":
+            kwargs["creationflags"] = (
+                subprocess.CREATE_NO_WINDOW
+            )
+
+        output = subprocess.check_output(
+            command,
+            **kwargs
+        )
+
+        stream_types = set()
+
+        for line in output.splitlines():
+
+            stream_type = line.strip().lower()
+
+            if stream_type:
+                stream_types.add(stream_type)
+
+        return stream_types
+
+    except subprocess.CalledProcessError:
+        return set()
+
+    except KeyboardInterrupt:
+
+        if error_messages_callback:
+            error_messages_callback(
+                "Cancelling all tasks"
+            )
+        else:
+            print("Cancelling all tasks")
+
+        return set()
+
+    except Exception as e:
+
+        if error_messages_callback:
+            error_messages_callback(
+                "get_media_stream_types : {}".format(e)
+            )
+        else:
+            print(e)
+
+        return set()
+
+
+def is_video_file(
+    file_path,
+    error_messages_callback=None
+):
+
+    return "video" in get_media_stream_types(
+        file_path,
+        error_messages_callback
+    )
+
+
+def is_audio_file(
+    file_path,
+    error_messages_callback=None
+):
+
+    return "audio" in get_media_stream_types(
+        file_path,
+        error_messages_callback
+    )
+
+
+# ================================================================
+# SPEECH REGION
+# ================================================================
+
+class SpeechRegionFinder(object):
+
     @staticmethod
     def percentile(arr, percent):
+
+        if not arr:
+            return 0
+
         arr = sorted(arr)
+
         k = (len(arr) - 1) * percent
+
         f = math.floor(k)
         c = math.ceil(k)
-        if f == c: return arr[int(k)]
+
+        if f == c:
+            return arr[int(k)]
+
         d0 = arr[int(f)] * (c - k)
         d1 = arr[int(c)] * (k - f)
+
         return d0 + d1
 
-    def __init__(self, frame_width=4096, min_region_size=0.5, max_region_size=6, error_messages_callback=None):
+    def __init__(
+        self,
+        frame_width=4096,
+        min_region_size=0.5,
+        max_region_size=6,
+        error_messages_callback=None
+    ):
+
         self.frame_width = frame_width
         self.min_region_size = min_region_size
         self.max_region_size = max_region_size
-        self.error_messages_callback = error_messages_callback
+        self.error_messages_callback = (
+            error_messages_callback
+        )
 
     def __call__(self, wav_filepath):
+
+        reader = None
+
         try:
-            reader = wave.open(wav_filepath)
+
+            reader = wave.open(
+                wav_filepath,
+                "rb"
+            )
+
             sample_width = reader.getsampwidth()
             rate = reader.getframerate()
             n_channels = reader.getnchannels()
-            total_duration = reader.getnframes() / rate
-            chunk_duration = float(self.frame_width) / rate
-            n_chunks = int(total_duration / chunk_duration)
+
+            if rate <= 0:
+                return []
+
+            total_duration = (
+                float(reader.getnframes()) / rate
+            )
+
+            chunk_duration = (
+                float(self.frame_width) / rate
+            )
+
+            n_chunks = int(
+                total_duration / chunk_duration
+            )
+
             energies = []
-            for i in range(n_chunks):
-                chunk = reader.readframes(self.frame_width)
-                energies.append(audioop.rms(chunk, sample_width * n_channels))
-            threshold = SpeechRegionFinder.percentile(energies, 0.2)
+
+            for _ in range(n_chunks):
+
+                chunk = reader.readframes(
+                    self.frame_width
+                )
+
+                if not chunk:
+                    break
+
+                energies.append(audioop.rms(chunk,sample_width * n_channels))
+                #energies.append(audioop.rms(chunk, sample_width))
+
+            if not energies:
+                return []
+
+            threshold = self.percentile(
+                energies,
+                0.2
+            )
+
             elapsed_time = 0
             regions = []
             region_start = None
+
             for energy in energies:
-                is_silence = energy <= threshold
-                max_exceeded = region_start and elapsed_time - region_start >= self.max_region_size
-                if (max_exceeded or is_silence) and region_start:
-                    if elapsed_time - region_start >= self.min_region_size:
-                        regions.append((region_start, elapsed_time))
-                        region_start = None
-                elif (not region_start) and (not is_silence):
+
+                is_silence = (
+                    energy <= threshold
+                )
+
+                max_exceeded = (
+                    region_start is not None
+                    and (
+                        elapsed_time - region_start
+                        >= self.max_region_size
+                    )
+                )
+
+                if (
+                    max_exceeded
+                    or is_silence
+                ) and region_start is not None:
+
+                    if (
+                        elapsed_time - region_start
+                        >= self.min_region_size
+                    ):
+
+                        regions.append(
+                            (
+                                region_start,
+                                elapsed_time
+                            )
+                        )
+
+                    region_start = None
+
+                elif (
+                    region_start is None
+                    and not is_silence
+                ):
+
                     region_start = elapsed_time
+
                 elapsed_time += chunk_duration
+
+            if region_start is not None:
+
+                if (
+                    elapsed_time - region_start
+                    >= self.min_region_size
+                ):
+
+                    regions.append(
+                        (
+                            region_start,
+                            elapsed_time
+                        )
+                    )
+
             return regions
 
         except KeyboardInterrupt:
+
             if self.error_messages_callback:
-                self.error_messages_callback("Cancelling all tasks")
+                self.error_messages_callback(
+                    "Cancelling all tasks"
+                )
             else:
                 print("Cancelling all tasks")
-            return
+
+            return []
 
         except Exception as e:
+
             if self.error_messages_callback:
-                self.error_messages_callback("SpeechRegionFinder : {}".format(e))
+                self.error_messages_callback(
+                    "SpeechRegionFinder : {}".format(e)
+                )
             else:
                 print(e)
-            return
 
+            return []
+
+        finally:
+
+            if reader is not None:
+
+                try:
+                    reader.close()
+                except Exception:
+                    pass
+
+
+# ================================================================
+# FLAC CONVERTER
+# ================================================================
 
 class FLACConverter(object):
-    def __init__(self, wav_filepath, include_before=0.25, include_after=0.25, error_messages_callback=None):
+
+    def __init__(
+        self,
+        wav_filepath,
+        include_before=0.25,
+        include_after=0.25,
+        error_messages_callback=None
+    ):
+
         self.wav_filepath = wav_filepath
         self.include_before = include_before
         self.include_after = include_after
-        self.error_messages_callback = error_messages_callback
+        self.error_messages_callback = (
+            error_messages_callback
+        )
 
     def __call__(self, region):
+
+        temp_path = None
+
         try:
+
             start, end = region
-            start = max(0, start - self.include_before)
+
+            start = max(
+                0,
+                start - self.include_before
+            )
+
             end += self.include_after
+
+            duration = end - start
+
             temp = tempfile.NamedTemporaryFile(suffix=".flac", delete=False)
-            command = [
-                        "ffmpeg",
-                        "-ss", str(start),
-                        "-t", str(end - start),
-                        "-y",
-                        "-i", self.wav_filepath,
-                        "-loglevel", "error",
-                        temp.name
-                      ]
-            subprocess.check_output(command, stdin=open(os.devnull))
-            content = temp.read()
+
+            temp_path = temp.name
             temp.close()
+
+            command = [
+                "ffmpeg",
+                "-ss", str(start),
+                "-t", str(duration),
+                "-y",
+                "-i", self.wav_filepath,
+                "-loglevel", "error",
+                "-hide_banner",
+                temp_path
+            ]
+
+            kwargs = {
+                "stdin": open(
+                    os.devnull,
+                    "rb"
+                )
+            }
+
+            try:
+
+                if sys.platform == "win32":
+                    kwargs["creationflags"] = (
+                        subprocess.CREATE_NO_WINDOW
+                    )
+
+                subprocess.check_output(
+                    command,
+                    stderr=subprocess.STDOUT,
+                    **kwargs
+                )
+
+            finally:
+
+                try:
+                    kwargs["stdin"].close()
+                except Exception:
+                    pass
+
+            with open(
+                temp_path,
+                "rb"
+            ) as flac_file:
+
+                content = flac_file.read()
+
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+            temp_path = None
+
             return content
 
         except KeyboardInterrupt:
+
+            if temp_path:
+
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
+
             if self.error_messages_callback:
-                self.error_messages_callback("Cancelling all tasks")
+                self.error_messages_callback(
+                    "Cancelling all tasks"
+                )
             else:
                 print("Cancelling all tasks")
-            return
+
+            return None
 
         except Exception as e:
+
+            if temp_path:
+
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
+
             if self.error_messages_callback:
-                self.error_messages_callback("FLACConverter : {}".format(e))
+                self.error_messages_callback(
+                    "FLACConverter : {}".format(e)
+                )
             else:
                 print(e)
-            return
 
+            return None
+
+
+# ================================================================
+# SPEECH RECOGNIZER
+# ================================================================
 
 class SpeechRecognizer(object):
-    def __init__(self, language="en", rate=44100, retries=3, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", timeout=30, error_messages_callback=None):
+    def __init__(self, language="en", rate=48000, retries=3, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", timeout=30, error_messages_callback=None):
         self.language = language
         self.rate = rate
         self.api_key = api_key
@@ -1029,7 +1248,7 @@ class SpeechRecognizer(object):
     def __call__(self, data):
         try:
             for i in range(self.retries):
-                url = "http://www.google.com/speech-api/v2/recognize?client=chromium&lang={lang}&key={key}".format(lang=self.language, key=self.api_key)
+                url = f"http://www.google.com/speech-api/v2/recognize?client=chromium&lang={self.language}&key={self.api_key}"
                 headers = {"Content-Type": "audio/x-flac rate=%d" % self.rate}
 
                 try:
@@ -1040,10 +1259,10 @@ class SpeechRecognizer(object):
                     except httpx.exceptions.NetworkError:
                         continue
 
-                for line in resp.content.decode("utf-8").split("\n"):
+                for line in resp.content.decode('utf-8').split("\n"):
                     try:
                         line = json.loads(line)
-                        line = line["result"][0]["alternative"][0]["transcript"]
+                        line = line['result'][0]['alternative'][0]['transcript']
                         return line[:1].upper() + line[1:]
                     except:
                         # no result
@@ -1058,547 +1277,2200 @@ class SpeechRecognizer(object):
 
         except Exception as e:
             if self.error_messages_callback:
-                self.error_messages_callback("SpeechRecognizer: {}".format(e))
-            else:
-                print(e)
-            return
-
-
-class SentenceTranslator(object):
-    def __init__(self, src, dst, patience=-1, timeout=30, error_messages_callback=None):
-        self.src = src
-        self.dst = dst
-        self.patience = patience
-        self.timeout = timeout
-        self.error_messages_callback = error_messages_callback
-
-    def __call__(self, sentence):
-        try:
-            translated_sentence = []
-            # handle the special case: empty string.
-            if not sentence:
-                return None
-            translated_sentence = self.GoogleTranslate(sentence, src=self.src, dst=self.dst, timeout=self.timeout)
-            fail_to_translate = translated_sentence[-1] == "\n"
-            while fail_to_translate and patience:
-                translated_sentence = self.GoogleTranslate(translated_sentence, src=self.src, dst=self.dst, timeout=self.timeout).text
-                if translated_sentence[-1] == "\n":
-                    if patience == -1:
-                        continue
-                    patience -= 1
-                else:
-                    fail_to_translate = False
-
-            return translated_sentence
-
-        except KeyboardInterrupt:
-            if self.error_messages_callback:
-                self.error_messages_callback("Cancelling all tasks")
-            else:
-                print("Cancelling all tasks")
-            return
-
-        except Exception as e:
-            if self.error_messages_callback:
-                self.error_messages_callback("SentenceTranslator : {}".format(e))
-            else:
-                print(e)
-            return
-
-    def GoogleTranslate(self, text, src, dst, timeout=30):
-        url = "https://translate.googleapis.com/translate_a/"
-        params = "single?client=gtx&sl="+src+"&tl="+dst+"&dt=t&q="+text;
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Referer": "https://translate.google.com",}
-
-        try:
-            response = requests.get(url+params, headers=headers, timeout=self.timeout)
-            if response.status_code == 200:
-                response_json = response.json()[0]
-                length = len(response_json)
-                translation = ""
-                for i in range(length):
-                    translation = translation + response_json[i][0]
-                return translation
-            return
-
-        except requests.exceptions.ConnectionError:
-            with httpx.Client() as client:
-                response = client.get(url+params, headers=headers, timeout=self.timeout)
-                if response.status_code == 200:
-                    response_json = response.json()[0]
-                    length = len(response_json)
-                    translation = ""
-                    for i in range(length):
-                        translation = translation + response_json[i][0]
-                    return translation
-                return
-
-        except KeyboardInterrupt:
-            if self.error_messages_callback:
-                self.error_messages_callback("Cancelling all tasks")
-            else:
-                print("Cancelling all tasks")
-            return
-
-        except Exception as e:
-            if self.error_messages_callback:
-                self.error_messages_callback("GoogleTranslate : {}".format(e))
-            else:
-                print(e)
-            return
-
-
-class SubtitleFormatter:
-    supported_formats = ["srt", "vtt", "json", "raw"]
-
-    def __init__(self, format_type, error_messages_callback=None):
-        self.format_type = format_type.lower()
-        self.error_messages_callback = error_messages_callback
-        
-    def __call__(self, subtitles, padding_before=0, padding_after=0):
-        try:
-            if self.format_type == "srt":
-                return self.srt_formatter(subtitles, padding_before, padding_after)
-            elif self.format_type == "vtt":
-                return self.vtt_formatter(subtitles, padding_before, padding_after)
-            elif self.format_type == "json":
-                return self.json_formatter(subtitles)
-            elif self.format_type == "raw":
-                return self.raw_formatter(subtitles)
-            else:
-                if error_messages_callback:
-                    error_messages_callback(f'Unsupported format type: {self.format_type}')
-                else:
-                    raise ValueError(f'Unsupported format type: {self.format_type}')
-
-        except KeyboardInterrupt:
-            if self.error_messages_callback:
-                self.error_messages_callback("Cancelling all tasks")
-            else:
-                print("Cancelling all tasks")
-            return
-
-        except Exception as e:
-            if self.error_messages_callback:
-                self.error_messages_callback("SubtitleFormatter : {}".format(e))
-            else:
-                print(e)
-            return
-
-    def srt_formatter(self, subtitles, padding_before=0, padding_after=0):
-        """
-        Serialize a list of subtitles according to the SRT format, with optional time padding.
-        """
-        sub_rip_file = pysrt.SubRipFile()
-        for i, ((start, end), text) in enumerate(subtitles, start=1):
-            item = pysrt.SubRipItem()
-            item.index = i
-            item.text = six.text_type(text)
-            item.start.seconds = max(0, start - padding_before)
-            item.end.seconds = end + padding_after
-            sub_rip_file.append(item)
-        return "\n".join(six.text_type(item) for item in sub_rip_file)
-
-    def vtt_formatter(self, subtitles, padding_before=0, padding_after=0):
-        """
-        Serialize a list of subtitles according to the VTT format, with optional time padding.
-        """
-        text = self.srt_formatter(subtitles, padding_before, padding_after)
-        text = "WEBVTT\n\n" + text.replace(",", ".")
-        return text
-
-    def json_formatter(self, subtitles):
-        """
-        Serialize a list of subtitles as a JSON blob.
-        """
-        subtitle_dicts = [
-            {
-                "start": start,
-                "end": end,
-                "content": text,
-            }
-            for ((start, end), text)
-            in subtitles
-        ]
-        return json.dumps(subtitle_dicts)
-
-    def raw_formatter(self, subtitles):
-        """
-        Serialize a list of subtitles as a newline-delimited string.
-        """
-        return ' '.join(text for (_rng, text) in subtitles)
-
-
-class SubtitleWriter:
-    def __init__(self, regions, transcripts, format, error_messages_callback=None):
-        self.regions = regions
-        self.transcripts = transcripts
-        self.format = format
-        self.timed_subtitles = [(r, t) for r, t in zip(self.regions, self.transcripts) if t]
-        self.error_messages_callback = error_messages_callback
-
-    def get_timed_subtitles(self):
-        return self.timed_subtitles
-
-    def write(self, declared_subtitle_filepath):
-        try:
-            formatter = SubtitleFormatter(self.format)
-            formatted_subtitles = formatter(self.timed_subtitles)
-            saved_subtitle_filepath = declared_subtitle_filepath
-            if saved_subtitle_filepath:
-                subtitle_file_base, subtitle_file_ext = os.path.splitext(saved_subtitle_filepath)
-                if not subtitle_file_ext:
-                    saved_subtitle_filepath = "{base}.{format}".format(base=subtitle_file_base, format=self.format)
-                else:
-                    saved_subtitle_filepath = declared_subtitle_filepath
-            with open(saved_subtitle_filepath, "wb") as f:
-                f.write(formatted_subtitles.encode("utf-8"))
-            #with open(saved_subtitle_filepath, 'a') as f:
-            #    f.write("\n")
-
-        except KeyboardInterrupt:
-            if self.error_messages_callback:
-                self.error_messages_callback("Cancelling all tasks")
-            else:
-                print("Cancelling all tasks")
-            return
-
-        except Exception as e:
-            if self.error_messages_callback:
-                self.error_messages_callback("SubtitleWriter : {}".format(e))
-            else:
-                print(e)
-            return
-
-
-class SRTFileReader:
-    def __init__(self, srt_file_path, error_messages_callback=None):
-        self.timed_subtitles = self(srt_file_path)
-        self.error_messages_callback = error_messages_callback
-
-    @staticmethod
-    def __call__(srt_file_path):
-        try:
-            """
-            Read SRT formatted subtitle file and return subtitles as list of tuples
-            """
-            timed_subtitles = []
-            with open(srt_file_path, "r") as srt_file:
-                lines = srt_file.readlines()
-                # Split the subtitle file into subtitle blocks
-                subtitle_blocks = []
-                block = []
-                for line in lines:
-                    if line.strip() == "":
-                        subtitle_blocks.append(block)
-                        block = []
-                    else:
-                        block.append(line.strip())
-                subtitle_blocks.append(block)
-
-                # Parse each subtitle block and store as tuple in timed_subtitles list
-                for block in subtitle_blocks:
-                    if block:
-                        # Extract start and end times from subtitle block
-                        start_time_str, end_time_str = block[1].split(' --> ')
-                        time_format = "%H:%M:%S,%f"
-                        start_time_elapsed_time = datetime.strptime(start_time_str, time_format) - datetime.strptime("00:00:00,000", time_format)
-                        start_time_total_seconds = start_time_elapsed_time.total_seconds()
-                        end_time_elapsed_time = datetime.strptime(end_time_str, time_format) - datetime.strptime("00:00:00,000", time_format)
-                        end_time_total_seconds = end_time_elapsed_time.total_seconds()
-                        # Extract subtitle text from subtitle block
-                        subtitle = ' '.join(block[2:])
-                        timed_subtitles.append(((start_time_total_seconds, end_time_total_seconds), subtitle))
-                return timed_subtitles
-
-        except KeyboardInterrupt:
-            if self.error_messages_callback:
-                self.error_messages_callback("Cancelling all tasks")
-            else:
-                print("Cancelling all tasks")
-            return
-
-        except Exception as e:
-            if self.error_messages_callback:
                 self.error_messages_callback(e)
             else:
                 print(e)
             return
 
 
+
+class SpeechRecognizerBAK(object):
+
+    def __init__(
+        self,
+        language="en",
+        rate=44100,
+        retries=3,
+        api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw",
+        timeout=30,
+        error_messages_callback=None
+    ):
+        self.language = language
+        self.rate = rate
+        self.api_key = api_key
+        self.retries = retries
+        self.timeout = timeout
+        self.error_messages_callback = error_messages_callback
+
+    def __call__(self, data):
+
+        if not data:
+            self._error("SpeechRecognizer: empty FLAC data")
+            return None
+
+        url = (
+            "http://www.google.com/"
+            "speech-api/v2/recognize"
+            "?client=chromium"
+            "&lang={lang}"
+            "&key={key}"
+        ).format(
+            lang=self.language,
+            key=self.api_key
+        )
+
+        headers = {
+            "Content-Type": (
+                "audio/x-flac; rate=%d"
+                % self.rate
+            )
+        }
+
+        for attempt in range(1, self.retries + 1):
+
+            try:
+
+                response = requests.post(
+                    url,
+                    data=data,
+                    headers=headers,
+                    timeout=self.timeout
+                )
+
+                if response.status_code != 200:
+
+                    self._error(
+                        "SpeechRecognizer HTTP %d "
+                        "(attempt %d/%d)"
+                        % (
+                            response.status_code,
+                            attempt,
+                            self.retries
+                        )
+                    )
+
+                    self._error(
+                        "Response: %s"
+                        % response.text[:500]
+                    )
+
+                    continue
+
+                content = response.content.decode(
+                    "utf-8",
+                    errors="replace"
+                )
+
+                if not content.strip():
+
+                    self._error(
+                        "SpeechRecognizer: empty response"
+                    )
+
+                    continue
+
+                found_transcript = None
+
+                for line in content.splitlines():
+
+                    line = line.strip()
+
+                    if not line:
+                        continue
+
+                    try:
+                        obj = json.loads(line)
+                    except ValueError:
+                        continue
+
+                    results = obj.get("result")
+
+                    if not isinstance(results, list):
+                        continue
+
+                    for result in results:
+
+                        if not isinstance(result, dict):
+                            continue
+
+                        alternatives = result.get(
+                            "alternative"
+                        )
+
+                        if not isinstance(
+                            alternatives,
+                            list
+                        ):
+                            continue
+
+                        for alternative in alternatives:
+
+                            if not isinstance(
+                                alternative,
+                                dict
+                            ):
+                                continue
+
+                            transcript = alternative.get(
+                                "transcript"
+                            )
+
+                            if transcript:
+
+                                found_transcript = (
+                                    transcript.strip()
+                                )
+
+                                break
+
+                        if found_transcript:
+                            break
+
+                    if found_transcript:
+                        break
+
+                if found_transcript:
+
+                    return (
+                        found_transcript[:1].upper()
+                        + found_transcript[1:]
+                    )
+
+                self._error(
+                    "SpeechRecognizer: "
+                    "no transcript in response"
+                )
+
+                self._error(
+                    "Response: %s"
+                    % content[:1000]
+                )
+
+            except requests.exceptions.RequestException as e:
+
+                self._error(
+                    "SpeechRecognizer request error "
+                    "(attempt %d/%d): %s"
+                    % (
+                        attempt,
+                        self.retries,
+                        e
+                    )
+                )
+
+            except KeyboardInterrupt:
+
+                self._error(
+                    "Cancelling all tasks"
+                )
+
+                return None
+
+            except Exception as e:
+
+                self._error(
+                    "SpeechRecognizer error: %s"
+                    % e
+                )
+
+        return None
+
+    def _error(self, message):
+
+        if self.error_messages_callback:
+            self.error_messages_callback(message)
+        else:
+            print(message)
+
+
+
+
+# ================================================================
+# GOOGLE TRANSLATE RESPONSE PARSER
+# ================================================================
+
+def parse_translate_response(
+    data,
+    endpoint_type
+):
+    """
+    Extract translation from endpoint response.
+    """
+
+    try:
+
+        if not isinstance(data, list):
+            return None
+
+        if not data:
+            return None
+
+        if endpoint_type == 1:
+
+            first = data[0]
+
+            if not isinstance(first, list):
+                return None
+
+            result = []
+
+            for item in first:
+
+                if (
+                    isinstance(item, list)
+                    and len(item) > 0
+                    and isinstance(item[0], str)
+                ):
+
+                    result.append(item[0])
+
+            translation = "".join(result)
+
+            return (
+                translation
+                if translation
+                else None
+            )
+
+        if endpoint_type == 2:
+
+            first = data[0]
+
+            if isinstance(first, str):
+                return first
+
+            if isinstance(first, list):
+
+                result = []
+
+                for item in first:
+
+                    if isinstance(item, str):
+
+                        result.append(item)
+
+                    elif (
+                        isinstance(item, list)
+                        and len(item) > 0
+                        and isinstance(item[0], str)
+                    ):
+
+                        result.append(item[0])
+
+                translation = "".join(result)
+
+                return (
+                    translation
+                    if translation
+                    else None
+                )
+
+    except Exception:
+        pass
+
+    return None
+
+
+# ================================================================
+# SENTENCE TRANSLATOR
+# ================================================================
+
+class SentenceTranslator(object):
+
+    def __init__(
+        self,
+        src,
+        dst,
+        endpoint_config,
+        patience=-1,
+        timeout=30,
+        error_messages_callback=None
+    ):
+
+        self.src = src
+        self.dst = dst
+        self.endpoint_config = endpoint_config or {}
+        self.patience = patience
+        self.timeout = timeout
+        self.error_messages_callback = (
+            error_messages_callback
+        )
+
+    def __call__(self, sentence):
+
+        try:
+
+            if not sentence:
+                return None
+
+            translated_sentence = self.GoogleTranslate(
+                sentence,
+                src=self.src,
+                dst=self.dst,
+                timeout=self.timeout
+            )
+
+            if translated_sentence is None:
+                return None
+
+            translated_sentence = str(
+                translated_sentence
+            )
+
+            if not translated_sentence:
+                return None
+
+            fail_to_translate = (
+                translated_sentence.endswith("\n")
+            )
+
+            patience = self.patience
+
+            while fail_to_translate and patience:
+
+                translated_sentence = (
+                    self.GoogleTranslate(
+                        translated_sentence,
+                        src=self.src,
+                        dst=self.dst,
+                        timeout=self.timeout
+                    )
+                )
+
+                if translated_sentence is None:
+                    return None
+
+                translated_sentence = str(
+                    translated_sentence
+                )
+
+                if translated_sentence.endswith(
+                    "\n"
+                ):
+
+                    if patience == -1:
+                        continue
+
+                    patience -= 1
+
+                else:
+
+                    fail_to_translate = False
+
+            return translated_sentence
+
+        except KeyboardInterrupt:
+
+            if self.error_messages_callback:
+                self.error_messages_callback(
+                    "Cancelling all tasks"
+                )
+            else:
+                print("Cancelling all tasks")
+
+            return None
+
+        except Exception as e:
+
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+
+            return None
+
+    def GoogleTranslate(
+        self,
+        text,
+        src,
+        dst,
+        timeout=30
+    ):
+
+        if not text:
+            return None
+
+        endpoint_type = self.endpoint_config.get(
+            "type"
+        )
+
+        if endpoint_type not in (1, 2):
+            return None
+
+        url = self.endpoint_config.get("url")
+
+        if not url:
+            return None
+
+        headers = self.endpoint_config.get(
+            "headers",
+            {}
+        )
+
+        base_params = self.endpoint_config.get(
+            "params",
+            {}
+        ).copy()
+
+        base_params["sl"] = src
+        base_params["tl"] = dst
+        base_params["q"] = text
+
+        try:
+
+            response = requests.get(
+                url,
+                params=base_params,
+                headers=headers,
+                timeout=timeout
+            )
+
+            if response.status_code != 200:
+
+                return None
+
+            try:
+                data = response.json()
+            except ValueError:
+                return None
+
+            return parse_translate_response(
+                data,
+                endpoint_type
+            )
+
+        except requests.exceptions.RequestException:
+
+            # ====================================================
+            # FALLBACK TO HTTPX
+            # ====================================================
+
+            try:
+
+                with httpx.Client(
+                    timeout=timeout
+                ) as client:
+
+                    response = client.get(
+                        url,
+                        params=base_params,
+                        headers=headers
+                    )
+
+                if response.status_code != 200:
+                    return None
+
+                try:
+                    data = response.json()
+                except ValueError:
+                    return None
+
+                return parse_translate_response(
+                    data,
+                    endpoint_type
+                )
+
+            except Exception as e:
+
+                if self.error_messages_callback:
+                    self.error_messages_callback(e)
+
+                return None
+
+        except KeyboardInterrupt:
+
+            if self.error_messages_callback:
+                self.error_messages_callback(
+                    "Cancelling all tasks"
+                )
+            else:
+                print("Cancelling all tasks")
+
+            return None
+
+        except Exception as e:
+
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+
+            return None
+
+
+# ================================================================
+# TEST TRANSLATION ENDPOINT
+# ================================================================
+
+def test_translation_endpoint(
+    src,
+    dst,
+    error_messages_callback=None
+):
+
+    test_sentence = "Hello"
+
+    # ============================================================
+    # ENDPOINT 1
+    # ============================================================
+
+    endpoint1 = {
+        "type": 1,
+
+        "url": (
+            "https://translate.googleapis.com/"
+            "translate_a/single"
+        ),
+
+        "params": {
+            "client": "gtx",
+            "sl": src,
+            "tl": dst,
+            "dt": "t",
+            "q": test_sentence
+        },
+
+        "headers": {
+            "User-Agent": (
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64)"
+            ),
+            "Referer": (
+                "https://translate.google.com"
+            )
+        }
+    }
+
+    try:
+
+        response = requests.get(
+            endpoint1["url"],
+            params=endpoint1["params"],
+            headers=endpoint1["headers"],
+            timeout=10
+        )
+
+        if response.status_code == 200:
+
+            try:
+                data = response.json()
+            except ValueError:
+                data = None
+
+            translation = parse_translate_response(
+                data,
+                1
+            )
+
+            if translation:
+                return endpoint1
+
+    except KeyboardInterrupt:
+
+        if error_messages_callback:
+            error_messages_callback(
+                "Cancelling all tasks"
+            )
+        else:
+            print("Cancelling all tasks")
+
+        return None
+
+    except Exception as e:
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print("SentenceTranslator endpoint 1 : FAILED")
+            print("Error: %s" % e)
+
+
+    # ============================================================
+    # ENDPOINT 2
+    # ============================================================
+
+    endpoint2 = {
+        "type": 2,
+
+        "url": (
+            "https://clients5.google.com/"
+            "translate_a/t"
+        ),
+
+        "params": {
+            "client": "dict-chrome-ex",
+            "sl": src,
+            "tl": dst,
+            "q": test_sentence
+        },
+
+        "headers": {
+            "User-Agent": (
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) "
+                "Chrome/139.0.0.0 "
+                "Safari/537.36"
+            ),
+            "Accept": (
+                "application/json,text/plain,*/*"
+            )
+        }
+    }
+
+    try:
+
+        response = requests.get(
+            endpoint2["url"],
+            params=endpoint2["params"],
+            headers=endpoint2["headers"],
+            timeout=10
+        )
+
+        if response.status_code == 200:
+
+            try:
+                data = response.json()
+            except ValueError:
+                data = None
+
+            translation = parse_translate_response(
+                data,
+                2
+            )
+
+            if translation:
+                return endpoint2
+
+    except KeyboardInterrupt:
+
+        if error_messages_callback:
+            error_messages_callback(
+                "Cancelling all tasks"
+            )
+        else:
+            print("Cancelling all tasks")
+
+        return None
+
+    except Exception as e:
+        if error_messages_callback:
+            error_messages_callback(e)
+        else:
+            print("SentenceTranslator endpoint 2 : FAILED")
+            print("Error: %s" % e)
+
+    return None
+
+
+# ================================================================
+# SUBTITLE FORMATTER
+# ================================================================
+
+class SubtitleFormatter(object):
+
+    supported_formats = [
+        "srt",
+        "vtt",
+        "json",
+        "raw"
+    ]
+
+    def __init__(
+        self,
+        format_type,
+        error_messages_callback=None
+    ):
+
+        self.format_type = (
+            format_type.lower()
+        )
+
+        self.error_messages_callback = (
+            error_messages_callback
+        )
+
+    def __call__(
+        self,
+        subtitles,
+        padding_before=0,
+        padding_after=0
+    ):
+
+        try:
+
+            if self.format_type == "srt":
+
+                return self.srt_formatter(
+                    subtitles,
+                    padding_before,
+                    padding_after
+                )
+
+            elif self.format_type == "vtt":
+
+                return self.vtt_formatter(
+                    subtitles,
+                    padding_before,
+                    padding_after
+                )
+
+            elif self.format_type == "json":
+
+                return self.json_formatter(
+                    subtitles
+                )
+
+            elif self.format_type == "raw":
+
+                return self.raw_formatter(
+                    subtitles
+                )
+
+            raise ValueError(
+                "Unsupported format type: {}".format(
+                    self.format_type
+                )
+            )
+
+        except KeyboardInterrupt:
+
+            if self.error_messages_callback:
+                self.error_messages_callback(
+                    "Cancelling all tasks"
+                )
+            else:
+                print("Cancelling all tasks")
+
+            return ""
+
+        except Exception as e:
+
+            if self.error_messages_callback:
+                self.error_messages_callback(
+                    "SubtitleFormatter : {}".format(e)
+                )
+            else:
+                print(e)
+
+            return ""
+
+    @staticmethod
+    def _to_subrip_time(seconds):
+
+        milliseconds = max(
+            0,
+            int(round(float(seconds) * 1000))
+        )
+
+        return pysrt.SubRipTime(
+            milliseconds=milliseconds
+        )
+
+    def srt_formatter(
+        self,
+        subtitles,
+        padding_before=0,
+        padding_after=0
+    ):
+
+        sub_rip_file = pysrt.SubRipFile()
+
+        for i, ((start, end), text) in enumerate(
+            subtitles,
+            start=1
+        ):
+
+            item = pysrt.SubRipItem()
+
+            item.index = i
+            item.text = six.text_type(text)
+
+            item.start = self._to_subrip_time(
+                max(
+                    0,
+                    start - padding_before
+                )
+            )
+
+            item.end = self._to_subrip_time(
+                end + padding_after
+            )
+
+            sub_rip_file.append(item)
+
+        return "\n".join(
+            six.text_type(item)
+            for item in sub_rip_file
+        )
+
+    def vtt_formatter(
+        self,
+        subtitles,
+        padding_before=0,
+        padding_after=0
+    ):
+
+        text = self.srt_formatter(
+            subtitles,
+            padding_before,
+            padding_after
+        )
+
+        return (
+            "WEBVTT\n\n"
+            + text.replace(",", ".")
+        )
+
+    def json_formatter(self, subtitles):
+
+        subtitle_dicts = [
+            {
+                "start": start,
+                "end": end,
+                "content": text
+            }
+
+            for ((start, end), text)
+            in subtitles
+        ]
+
+        return json.dumps(
+            subtitle_dicts,
+            ensure_ascii=False
+        )
+
+    def raw_formatter(self, subtitles):
+
+        return " ".join(
+            six.text_type(text)
+            for (_rng, text)
+            in subtitles
+        )
+
+
+# ================================================================
+# SUBTITLE WRITER
+# ================================================================
+
+class SubtitleWriter(object):
+
+    def __init__(
+        self,
+        regions,
+        transcripts,
+        format,
+        error_messages_callback=None
+    ):
+
+        self.regions = regions
+        self.transcripts = transcripts
+        self.format = format
+
+        self.timed_subtitles = [
+            (r, t)
+            for r, t in zip(
+                self.regions,
+                self.transcripts
+            )
+            if t
+        ]
+
+        self.error_messages_callback = (
+            error_messages_callback
+        )
+
+    def get_timed_subtitles(self):
+        return self.timed_subtitles
+
+    def write(self, declared_subtitle_filepath):
+
+        try:
+
+            formatter = SubtitleFormatter(
+                self.format,
+                error_messages_callback=(
+                    self.error_messages_callback
+                )
+            )
+
+            formatted_subtitles = formatter(
+                self.timed_subtitles
+            )
+
+            saved_subtitle_filepath = (
+                declared_subtitle_filepath
+            )
+
+            if saved_subtitle_filepath:
+
+                subtitle_file_base, subtitle_file_ext = (
+                    os.path.splitext(
+                        saved_subtitle_filepath
+                    )
+                )
+
+                if not subtitle_file_ext:
+
+                    saved_subtitle_filepath = (
+                        "{}.{}".format(
+                            subtitle_file_base,
+                            self.format
+                        )
+                    )
+
+            with open(
+                saved_subtitle_filepath,
+                "wb"
+            ) as f:
+
+                f.write(
+                    formatted_subtitles.encode(
+                        "utf-8"
+                    )
+                )
+
+            return saved_subtitle_filepath
+
+        except KeyboardInterrupt:
+
+            if self.error_messages_callback:
+                self.error_messages_callback(
+                    "Cancelling all tasks"
+                )
+            else:
+                print("Cancelling all tasks")
+
+            return None
+
+        except Exception as e:
+
+            if self.error_messages_callback:
+                self.error_messages_callback(
+                    "SubtitleWriter : {}".format(e)
+                )
+            else:
+                print(e)
+
+            return None
+
+
+# ================================================================
+# SRT READER
+# ================================================================
+
+class SRTFileReader(object):
+
+    def __init__(
+        self,
+        srt_file_path,
+        error_messages_callback=None
+    ):
+
+        self.error_messages_callback = (
+            error_messages_callback
+        )
+
+        self.timed_subtitles = self(
+            srt_file_path
+        )
+
+    def __call__(self, srt_file_path):
+
+        try:
+
+            timed_subtitles = []
+
+            with open(
+                srt_file_path,
+                "r",
+                encoding="utf-8-sig"
+            ) as srt_file:
+
+                lines = srt_file.readlines()
+
+            subtitle_blocks = []
+            block = []
+
+            for line in lines:
+
+                if line.strip() == "":
+
+                    if block:
+                        subtitle_blocks.append(block)
+
+                    block = []
+
+                else:
+
+                    block.append(
+                        line.strip()
+                    )
+
+            if block:
+                subtitle_blocks.append(block)
+
+            for block in subtitle_blocks:
+
+                if len(block) < 3:
+                    continue
+
+                try:
+
+                    start_time_str, end_time_str = (
+                        block[1].split(
+                            " --> ",
+                            1
+                        )
+                    )
+
+                    start = pysrt.SubRipTime.from_string(
+                        start_time_str.replace(
+                            ".",
+                            ","
+                        )
+                    )
+
+                    end = pysrt.SubRipTime.from_string(
+                        end_time_str.replace(
+                            ".",
+                            ","
+                        )
+                    )
+
+                    subtitle = " ".join(
+                        block[2:]
+                    )
+
+                    timed_subtitles.append(
+                        (
+                            (
+                                start.ordinal / 1000.0,
+                                end.ordinal / 1000.0
+                            ),
+                            subtitle
+                        )
+                    )
+
+                except Exception:
+                    continue
+
+            return timed_subtitles
+
+        except KeyboardInterrupt:
+
+            if self.error_messages_callback:
+                self.error_messages_callback(
+                    "Cancelling all tasks"
+                )
+            else:
+                print("Cancelling all tasks")
+
+            return []
+
+        except Exception as e:
+
+            if self.error_messages_callback:
+                self.error_messages_callback(e)
+            else:
+                print(e)
+
+            return []
+
+
+# ================================================================
+# PROGRESS / ERROR
+# ================================================================
+
 def pBar(progress, total, prefix):
+
+    if total <= 0:
+        total = 1
+
+    progress = max(
+        0,
+        min(progress, total)
+    )
+
     bar_length = 10
-    filled_up_Length = int(round(bar_length*progress/(total)))
-    percentage = round(100.0 * progress/(total),1)
-    bar = '█' * filled_up_Length + ' ' * (bar_length - filled_up_Length)
-    text = str("%s |%s| %s%s\r" %(prefix, bar, int(percentage), "%"))
+
+    filled_up_length = int(
+        round(
+            bar_length
+            * progress
+            / float(total)
+        )
+    )
+
+    percentage = round(
+        100.0
+        * progress
+        / float(total),
+        1
+    )
+
+    bar = (
+        "█" * filled_up_length
+        + " " * (
+            bar_length
+            - filled_up_length
+        )
+    )
+
+    text = (
+        "{} |{}| {}%\r"
+        .format(
+            prefix,
+            bar,
+            int(percentage)
+        )
+    )
+
     sys.stderr.write(text)
     sys.stderr.flush()
 
 
-def show_progress(media_filepath, progress, prefix=None):
-    total = 100
-    file_display_name = os.path.basename(media_filepath).split("/")[-1]
-    prefix = "Converting %s to a temporary WAV file         : " %(file_display_name.center(32))
-    pBar(progress, total, prefix)
+def show_progress(
+    media_filepath,
+    progress,
+    prefix=None
+):
+
+    file_display_name = os.path.basename(
+        media_filepath
+    )
+
+    prefix = (
+        "Converting {} to a temporary WAV file         : "
+        .format(
+            file_display_name.center(32)
+        )
+    )
+
+    pBar(
+        progress,
+        100,
+        prefix
+    )
 
 
 def show_error_messages(messages):
     print(messages)
 
 
-def transcribe(src, dst, media_filepath, subtitle_format, event, n_media_filepaths):
-    global thread_transcribe, thread_transcribe_starter, pool, do_translate, completed_tasks, wav_converter_pbar
+# ================================================================
+# TRANSCRIBE
+# ================================================================
+
+def transcribe(
+    src,
+    dst,
+    media_filepath,
+    subtitle_format,
+    event,
+    n_media_filepaths
+):
+
+    global pool
+    global do_translate
+    global completed_tasks
+    global start_time
+    global end_time
 
     language = Language()
+
     wav_filepath = None
     sample_rate = None
 
-    base, ext = os.path.splitext(media_filepath)
-    subtitle_filepath = "{base}.{format}".format(base=base, format=subtitle_format)
-    if os.path.isfile(subtitle_filepath): os.remove(subtitle_filepath)
+    base, ext = os.path.splitext(
+        media_filepath
+    )
+
+    subtitle_filepath = (
+        "{}.{}".format(
+            base,
+            subtitle_format
+        )
+    )
+
+    if os.path.isfile(
+        subtitle_filepath
+    ):
+
+        try:
+            os.remove(
+                subtitle_filepath
+            )
+        except OSError:
+            pass
+
+    translated_subtitle_filepath = None
 
     if do_translate:
-        translated_subtitle_filepath = subtitle_filepath[ :-4] + ".translated." + subtitle_format
-        if os.path.isfile(translated_subtitle_filepath): os.remove(translated_subtitle_filepath)
 
-    regions = None
-    file_display_name = os.path.basename(media_filepath).split("/")[-1]
+        translated_subtitle_filepath = (
+            "{}.translated.{}".format(
+                base,
+                subtitle_format
+            )
+        )
+
+        if os.path.isfile(
+            translated_subtitle_filepath
+        ):
+
+            try:
+                os.remove(
+                    translated_subtitle_filepath
+                )
+            except OSError:
+                pass
+
+    file_display_name = os.path.basename(
+        media_filepath
+    )
 
     sys.stderr.write("\r")
 
     try:
-        prefix = "Converting %s to a temporary WAV file         : " %(file_display_name.center(32))
-        wav_converter = WavConverter(progress_callback=show_progress, error_messages_callback=show_error_messages)
-        wav_filepath, sample_rate = wav_converter(media_filepath)
-        pBar(100, 100, prefix)
+
+        prefix = (
+            "Converting {} to a temporary WAV file         : "
+            .format(
+                file_display_name.center(32)
+            )
+        )
+
+        wav_converter = WavConverter(
+            progress_callback=show_progress,
+            error_messages_callback=(
+                show_error_messages
+            )
+        )
+
+        result = wav_converter(
+            media_filepath
+        )
+
+        if not result:
+            return
+
+        wav_filepath, sample_rate = result
+
+        pBar(
+            100,
+            100,
+            prefix
+        )
 
     except Exception as e:
-        print("wav_converter : {}".format(e))
+
+        print(
+            "wav_converter : {}".format(e)
+        )
+
         return
 
     try:
-        region_finder = SpeechRegionFinder(frame_width=4096, min_region_size=0.5, max_region_size=6, error_messages_callback=show_error_messages)
-        regions = region_finder(wav_filepath)
-        num = len(regions)
+
+        region_finder = SpeechRegionFinder(
+            frame_width=4096,
+            min_region_size=0.5,
+            max_region_size=6,
+            error_messages_callback=(
+                show_error_messages
+            )
+        )
+
+        regions = region_finder(
+            wav_filepath
+        )
+
+        if not regions:
+            print(
+                "No speech regions found: {}".format(
+                    file_display_name
+                )
+            )
+            return
+
     except Exception as e:
-        print("region_finder : {}".format(e))
+
+        print(
+            "region_finder : {}".format(e)
+        )
+
         return
 
     try:
-        converter = FLACConverter(wav_filepath=wav_filepath, error_messages_callback=show_error_messages)
+
+        converter = FLACConverter(
+            wav_filepath=wav_filepath,
+            error_messages_callback=(
+                show_error_messages
+            )
+        )
+
     except Exception as e:
-        print("converter : {}".format(e))
+
+        print(
+            "converter : {}".format(e)
+        )
+
         return
 
     try:
-        recognizer = SpeechRecognizer(language=src, rate=sample_rate, api_key="AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", error_messages_callback=show_error_messages)
+
+        recognizer = SpeechRecognizer(
+            language=src,
+            rate=sample_rate,
+            retries=3,
+            error_messages_callback=(
+                show_error_messages
+            )
+        )
+
     except Exception as e:
-        print("recognizer : {}".format(e))
+
+        print(
+            "recognizer : {}".format(e)
+        )
+
         return
 
     extracted_regions = []
     transcriptions = []
-    translated_transcriptions = []
 
     sys.stderr.write("\r")
 
-    if regions:
-        try:
-            total = len(regions)
-            prefix = "Converting %s speech regions to FLAC files    : " %(file_display_name.center(32))
-            for i, extracted_region in enumerate(pool[media_filepath].imap(converter, regions)):
-                extracted_regions.append(extracted_region)
-                pBar(i, total, prefix)
-            pBar(total, total, prefix)
+    try:
 
-            total = len(regions)
-            prefix = "Creating %s transcriptions from FLAC files    : " %(file_display_name.center(32))
-            for i, transcription in enumerate(pool[media_filepath].imap(recognizer, extracted_regions)):
-                transcriptions.append(transcription)
-                pBar(i, total, prefix)
-            pBar(total, total, prefix)
+        total = len(regions)
 
-            writer = SubtitleWriter(regions, transcriptions, subtitle_format, error_messages_callback=show_error_messages)
-            writer.write(subtitle_filepath)
+        prefix = (
+            "Converting {} speech regions to FLAC files    : "
+            .format(
+                file_display_name.center(32)
+            )
+        )
 
-            if do_translate:
-                translated_subtitle_filepath = subtitle_filepath[ :-4] + '.translated.' + subtitle_format
+        current_pool = pool.get(
+            media_filepath
+        )
 
-                timed_subtitles = writer.timed_subtitles
+        if current_pool is None:
+            raise RuntimeError(
+                "Multiprocessing pool is unavailable"
+            )
 
-                created_regions = []
-                created_transcripts = []
-                for entry in timed_subtitles:
-                    created_regions.append(entry[0])
-                    created_transcripts.append(entry[1])
+        for i, extracted_region in enumerate(
+            current_pool.imap(
+                converter,
+                regions
+            ),
+            start=1
+        ):
 
-                transcript_translator = SentenceTranslator(src=src, dst=dst, error_messages_callback=show_error_messages)
-                translated_transcriptions = []
+            if extracted_region:
 
-                total = len(regions)
-                prefix = "Translating %s from %s to %s      : " %(file_display_name.center(32), src.center(8), dst.center(8))
-                for i, translated_transcription in enumerate(pool[media_filepath].imap(transcript_translator, created_transcripts)):
-                    translated_transcriptions.append(translated_transcription)
-                    pBar(i, total, prefix)
-                pBar(total, total, prefix)
+                extracted_regions.append(
+                    extracted_region
+                )
 
-                translation_writer = SubtitleWriter(created_regions, translated_transcriptions, subtitle_format, error_messages_callback=show_error_messages)
-                translation_writer.write(translated_subtitle_filepath)
+            pBar(
+                i,
+                total,
+                prefix
+            )
 
-            sys.stderr.write("\n")
-            sys.stderr.flush()
+        pBar(
+            total,
+            total,
+            prefix
+        )
 
-            print("")
-            if do_translate:
-                print("Original   subtitles file for %s created at   : %s" %(file_display_name.center(32), subtitle_filepath))
-                print("Translated subtitles file for %s created at   : %s" %(file_display_name.center(32), translated_subtitle_filepath))
-                print("")
-            else:
-                print("")
-                print("Subtitles file for %s created at              : %s" %(file_display_name.center(32), subtitle_filepath))
-                print("")
+        prefix = (
+            "Creating {} transcriptions from FLAC files    : "
+            .format(
+                file_display_name.center(32)
+            )
+        )
 
+        total_extracted = len(
+            extracted_regions
+        )
+
+        for i, transcription in enumerate(
+            current_pool.imap(
+                recognizer,
+                extracted_regions
+            ),
+            start=1
+        ):
+
+            transcriptions.append(
+                transcription
+            )
+
+            pBar(
+                i,
+                total_extracted,
+                prefix
+            )
+
+        pBar(
+            total_extracted,
+            total_extracted,
+            prefix
+        )
+
+        writer = SubtitleWriter(
+            regions[:len(transcriptions)],
+            transcriptions,
+            subtitle_format,
+            error_messages_callback=(
+                show_error_messages
+            )
+        )
+
+        writer.write(
+            subtitle_filepath
+        )
+
+        if do_translate:
+
+            timed_subtitles = (
+                writer.timed_subtitles
+            )
+
+            created_regions = []
+            created_transcripts = []
+
+            for entry in timed_subtitles:
+
+                created_regions.append(
+                    entry[0]
+                )
+
+                created_transcripts.append(
+                    entry[1]
+                )
+
+            transcript_translator = (
+                SentenceTranslator(
+                    src=src,
+                    dst=dst,
+                    endpoint_config=(
+                        endpoint_config
+                    ),
+                    error_messages_callback=(
+                        show_error_messages
+                    )
+                )
+            )
+
+            translated_transcriptions = []
+
+            total = len(
+                created_transcripts
+            )
+
+            prefix = (
+                "Translating {} from {} to {}      : "
+                .format(
+                    file_display_name.center(32),
+                    src.center(8),
+                    dst.center(8)
+                )
+            )
+
+            for i, translated_transcription in enumerate(
+                current_pool.imap(
+                    transcript_translator,
+                    created_transcripts
+                ),
+                start=1
+            ):
+
+                translated_transcriptions.append(
+                    translated_transcription
+                )
+
+                pBar(
+                    i,
+                    total,
+                    prefix
+                )
+
+            pBar(
+                total,
+                total,
+                prefix
+            )
+
+            translation_writer = SubtitleWriter(
+                created_regions,
+                translated_transcriptions,
+                subtitle_format,
+                error_messages_callback=(
+                    show_error_messages
+                )
+            )
+
+            translation_writer.write(
+                translated_subtitle_filepath
+            )
+
+        sys.stderr.write("\n")
+        sys.stderr.flush()
+
+        print("")
+
+        if do_translate:
+
+            print(
+                "Original   subtitles file for {} created at   : {}"
+                .format(
+                    file_display_name.center(32),
+                    subtitle_filepath
+                )
+            )
+
+            print(
+                "Translated subtitles file for {} created at   : {}"
+                .format(
+                    file_display_name.center(32),
+                    translated_subtitle_filepath
+                )
+            )
+
+        else:
+
+            print(
+                "Subtitles file for {} created at              : {}"
+                .format(
+                    file_display_name.center(32),
+                    subtitle_filepath
+                )
+            )
+
+        print("")
+
+        event.set()
+
+        completed_tasks += 1
+
+        if completed_tasks == n_media_filepaths:
+            end_time = datetime.datetime.now()
+            elapsed_time = (end_time - start_time)
+            print("transcribe elapsed_time = {}".format(elapsed_time))
+
+    except KeyboardInterrupt:
+
+        print(
+            "Cancelling all tasks"
+        )
+
+    except Exception as e:
+
+        print(
+            "transcribe : {}".format(e)
+        )
+
+    finally:
+
+        if wav_filepath:
+
+            try:
+                if os.path.isfile(
+                    wav_filepath
+                ):
+                    os.remove(
+                        wav_filepath
+                    )
+            except OSError:
+                pass
+
+        if event:
             event.set()
-            completed_tasks += 1
-            if completed_tasks == n_media_filepaths:
-                end_time = datetime.datetime.now()
-                elapsed_time = end_time - start_time
-                print("elapsed_time = {}".format(elapsed_time))
 
-        except Exception as e:
-            print(e)
-            return
+        current_pool = pool.get(
+            media_filepath
+        )
 
-        if pool[media_filepath]:
-            pool[media_filepath].close()
-            pool[media_filepath].join()
+        if current_pool is not None:
+
+            try:
+                current_pool.close()
+                current_pool.join()
+            except Exception:
+                pass
+
             pool[media_filepath] = None
 
 
+# ================================================================
+# MAIN
+# ================================================================
+
 def main():
-    global thread_transcribe, thread_transcribe_starter, pool, do_translate, completed_tasks, start_time, end_time
+
+    global pool
+    global do_translate
+    global completed_tasks
+    global start_time
+    global end_time
+    global endpoint_config
 
     if sys.platform == "win32":
-        stop_ffmpeg_windows(error_messages_callback=show_error_messages)
-    else:
-        stop_ffmpeg_linux(error_messages_callback=show_error_messages)
 
-    remove_temp_files("flac", error_messages_callback=show_error_messages)
-    remove_temp_files("wav", error_messages_callback=show_error_messages)
+        stop_ffmpeg_windows(
+            error_messages_callback=(
+                show_error_messages
+            )
+        )
+
+    else:
+
+        stop_ffmpeg_linux(
+            error_messages_callback=(
+                show_error_messages
+            )
+        )
+
+    remove_temp_files(
+        "flac",
+        error_messages_callback=(
+            show_error_messages
+        )
+    )
+
+    remove_temp_files(
+        "wav",
+        error_messages_callback=(
+            show_error_messages
+        )
+    )
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('source_path', help="File path of the video or audio files to generate subtitles files (use wildcard for multiple files or separate them with a space character)", nargs='*')
-    parser.add_argument('-S', '--src-language', help="Language code of the audio language spoken in video/audio source_path", default="en")
-    parser.add_argument('-D', '--dst-language', help="Desired translation language code for the subtitles", default=None)
-    parser.add_argument('-ll', '--list-languages', help="List all supported languages", action='store_true')
-    parser.add_argument('-o', '--output', help="Output file path for subtitles (by default, subtitles are saved in the same directory and named with the source_path base name)")
-    parser.add_argument('-F', '--format', help="Desired subtitle format", default="srt")
-    parser.add_argument('-lf', '--list-formats', help="List all supported subtitle formats", action='store_true')
-    parser.add_argument('-C', '--concurrency', help="Number of concurrent API requests to make", type=int, default=10)
-    parser.add_argument('-v', '--version', action='version', version=VERSION)
+
+    parser.add_argument(
+        "source_path",
+        help=(
+            "File path of the video or audio files "
+            "to generate subtitles files "
+            "(use wildcard for multiple files or "
+            "separate them with a space character)"
+        ),
+        nargs="*"
+    )
+
+    parser.add_argument(
+        "-S",
+        "--src-language",
+        help=(
+            "Language code of the audio language "
+            "spoken in video/audio source_path"
+        ),
+        default="en"
+    )
+
+    parser.add_argument(
+        "-D",
+        "--dst-language",
+        help=(
+            "Desired translation language code "
+            "for the subtitles"
+        ),
+        default=None
+    )
+
+    parser.add_argument(
+        "-ll",
+        "--list-languages",
+        help="List all supported languages",
+        action="store_true"
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        help=(
+            "Output file path for subtitles "
+            "(by default, subtitles are saved "
+            "in the same directory and named "
+            "with the source_path base name)"
+        )
+    )
+
+    parser.add_argument(
+        "-F",
+        "--format",
+        help="Desired subtitle format",
+        default="srt"
+    )
+
+    parser.add_argument(
+        "-lf",
+        "--list-formats",
+        help="List all supported subtitle formats",
+        action="store_true"
+    )
+
+    parser.add_argument(
+        "-C",
+        "--concurrency",
+        help=(
+            "Number of concurrent API requests to make"
+        ),
+        type=int,
+        default=10
+    )
+
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=VERSION
+    )
 
     args = parser.parse_args()
 
     language = Language()
 
+    # ============================================================
+    # LANGUAGES
+    # ============================================================
+
     if args.list_languages:
-        print("List of supported languages:")
-        for code, language in sorted(language.name_of_code.items()):
-            #print("{code}\t{language}".format(code=code, language=language))
-            print("%8s : %s" %(code, language))
+
+        print(
+            "List of supported languages:"
+        )
+
+        for code, name in sorted(
+            language.name_of_code.items()
+        ):
+
+            print(
+                "{:>8} : {}".format(
+                    code,
+                    name
+                )
+            )
+
         return 0
 
-    #if args.src_language not in language.dict:
-    if args.src_language not in language.name_of_code.keys():
-        print("Source language is not supported. Run with --list-languages to see all supported languages.")
+    if (
+        args.src_language
+        not in language.name_of_code
+    ):
+
+        print(
+            "Source language is not supported. "
+            "Run with --list-languages to see "
+            "all supported languages."
+        )
+
         return 1
+
+    # ============================================================
+    # TRANSLATION
+    # ============================================================
+
+    do_translate = False
 
     if args.dst_language:
-        #if not args.dst_language in language.dict:
-        if not args.dst_language in language.name_of_code.keys():
-            print("Destination language is not supported. Run with --list-languages to see all supported languages.")
+
+        if (
+            args.dst_language
+            not in language.name_of_code
+        ):
+
+            print(
+                "Destination language is not supported. "
+                "Run with --list-languages to see "
+                "all supported languages."
+            )
+
             return 1
-        if not is_same_language(args.src_language, args.dst_language, error_messages_callback=show_error_messages):
-            do_translate = True
-        else:
-            do_translate = False
-    else:
-        do_translate = False
+
+        do_translate = not is_same_language(
+            args.src_language,
+            args.dst_language,
+            error_messages_callback=(
+                show_error_messages
+            )
+        )
+
+    # ============================================================
+    # FORMATS
+    # ============================================================
 
     if args.list_formats:
-        print("List of supported subtitle formats:")
-        for subtitle_format in SubtitleFormatter.supported_formats:
-            print("{format}".format(format=subtitle_format))
+
+        print(
+            "List of supported subtitle formats:"
+        )
+
+        for subtitle_format in (
+            SubtitleFormatter.supported_formats
+        ):
+
+            print(
+                subtitle_format
+            )
+
         return 0
 
-    if args.format not in SubtitleFormatter.supported_formats:
-        print("Subtitle format is not supported. Run with --list-formats to see all supported formats.")
+    args.format = args.format.lower()
+
+    if (
+        args.format
+        not in SubtitleFormatter.supported_formats
+    ):
+
+        print(
+            "Subtitle format is not supported. "
+            "Run with --list-formats to see "
+            "all supported formats."
+        )
+
         return 1
 
+    # ============================================================
+    # SOURCE FILES
+    # ============================================================
+
     if not args.source_path:
-        parser.print_help(sys.stderr)
+
+        parser.print_help(
+            sys.stderr
+        )
+
         return 1
 
     media_filepaths = []
     arg_filepaths = []
 
     for arg in args.source_path:
-        if not os.sep in arg:
-            argpath = os.path.join(os.getcwd(),arg)
+
+        if not os.path.isabs(arg):
+
+            argpath = os.path.join(
+                os.getcwd(),
+                arg
+            )
+
         else:
+
             argpath = arg
-        arg_filepaths += glob(argpath)
+
+        matches = glob(argpath)
+
+        if matches:
+
+            arg_filepaths.extend(
+                matches
+            )
+
+        elif os.path.isfile(argpath):
+
+            arg_filepaths.append(
+                argpath
+            )
+
+    # Remove duplicates while preserving order.
+    seen = set()
+
+    unique_arg_filepaths = []
+
+    for path in arg_filepaths:
+
+        normalized = os.path.normcase(
+            os.path.abspath(path)
+        )
+
+        if normalized not in seen:
+
+            seen.add(normalized)
+            unique_arg_filepaths.append(
+                path
+            )
+
+    arg_filepaths = unique_arg_filepaths
+
+    # ============================================================
+    # DETECT VIDEO / AUDIO
+    # ============================================================
 
     for argpath in arg_filepaths:
-        if os.path.isfile(argpath):
-            if is_video_file(argpath, error_messages_callback=show_error_messages) or is_audio_file(argpath, error_messages_callback=show_error_messages):
-                media_filepaths.append(argpath)
-            else:
-                print("{} is not a valid video or audio file".format(argpath))
+
+        if not os.path.isfile(argpath):
+
+            print(
+                "{} is not exist".format(
+                    argpath
+                )
+            )
+
+            continue
+
+        stream_types = get_media_stream_types(
+            argpath,
+            error_messages_callback=(
+                show_error_messages
+            )
+        )
+
+        if stream_types.intersection(
+            ("video", "audio")
+        ):
+
+            media_filepaths.append(
+                argpath
+            )
+
         else:
-            print("{} is not exist".format(argpath))
+
+            print(
+                "{} is not a valid video or audio file"
+                .format(argpath)
+            )
+
+    if not media_filepaths:
+
+        print(
+            "No valid video or audio files found."
+        )
+
+        return 1
+
+    # ============================================================
+    # TEST GOOGLE TRANSLATE ENDPOINT
+    # ============================================================
+
+    endpoint_config = None
+
+    if do_translate:
+
+        print(
+            "Checking Google Translate endpoint..."
+        )
+
+        endpoint_config = (
+            test_translation_endpoint(
+                args.src_language,
+                args.dst_language,
+                error_messages_callback=(
+                    show_error_messages
+                )
+            )
+        )
+
+        if endpoint_config is None:
+
+            print(
+                "Translation endpoint is unavailable."
+            )
+
+            return 1
+
+        print(
+            "Using Google Translate endpoint {}."
+            .format(
+                endpoint_config.get("type")
+            )
+        )
+
+    # ============================================================
+    # CONCURRENCY
+    # ============================================================
+
+    concurrency = max(
+        1,
+        int(args.concurrency)
+    )
 
     completed_tasks = 0
-    start_time = 0
-    end_time = 0
-    n_media_filepaths = len(media_filepaths)
+
+    start_time = None
+    end_time = None
+
+    n_media_filepaths = len(
+        media_filepaths
+    )
+
+    completion_events = {}
+
+    pool = {}
+
+    # ============================================================
+    # CREATE POOLS
+    # ============================================================
 
     try:
-        completion_events = {}  # Dictionary to store completion events
-    except Exception as e:
-        print("completion_events = {}".format(e))
 
-    try:
-        pool = {media_filepath: multiprocessing.Pool(args.concurrency) for media_filepath in media_filepaths}
-    except Exception as e:
-        print("pool : {}".format(e))
+        for media_filepath in media_filepaths:
 
-    # Create completion events for each media file
+            pool[media_filepath] = (
+                multiprocessing.Pool(
+                    processes=concurrency
+                )
+            )
+
+    except Exception as e:
+
+        print(
+            "pool : {}".format(e)
+        )
+
+        for p in pool.values():
+
+            try:
+                p.close()
+                p.join()
+            except Exception:
+                pass
+
+        return 1
+
+    # ============================================================
+    # CREATE EVENTS
+    # ============================================================
+
     for media_filepath in media_filepaths:
-        completion_events[media_filepath] = threading.Event()
+
+        completion_events[
+            media_filepath
+        ] = threading.Event()
 
     start_time = datetime.datetime.now()
-    #print("start_time = {}".format(start_time))
+
+    # ============================================================
+    # START TRANSCRIPTION THREADS
+    # ============================================================
+
+    threads = []
 
     for media_filepath in media_filepaths:
-        thread_transcribe = Thread(target=transcribe, args=(args.src_language, args.dst_language, media_filepath, args.format, completion_events[media_filepath], n_media_filepaths), daemon=True)
-        thread_transcribe.start()
 
-    # Wait for all threads to complete
-    for completion_event in completion_events.values():
-        completion_event.wait()
+        thread = Thread(
+            target=transcribe,
+            args=(
+                args.src_language,
+                args.dst_language,
+                media_filepath,
+                args.format,
+                completion_events[
+                    media_filepath
+                ],
+                n_media_filepaths
+            )
+        )
+
+        thread.daemon = True
+        thread.start()
+
+        threads.append(
+            thread
+        )
+
+    # ============================================================
+    # WAIT
+    # ============================================================
+
+    try:
+
+        for completion_event in (
+            completion_events.values()
+        ):
+
+            completion_event.wait()
+
+    except KeyboardInterrupt:
+
+        print(
+            "\nCancelling all tasks..."
+        )
+
+    # Make sure worker threads have finished.
+    for thread in threads:
+
+        try:
+            thread.join()
+        except Exception:
+            pass
+
+    # ============================================================
+    # CLEANUP POOLS
+    # ============================================================
+
+    for media_filepath, p in list(
+        pool.items()
+    ):
+
+        if p is not None:
+
+            try:
+                p.close()
+                p.join()
+            except Exception:
+                pass
+
+            pool[media_filepath] = None
+
+    # ============================================================
+    # CLEANUP FFMPEG / TEMP FILES
+    # ============================================================
+
+    if sys.platform == "win32":
+
+        stop_ffmpeg_windows(
+            error_messages_callback=(
+                show_error_messages
+            )
+        )
+
+    else:
+
+        stop_ffmpeg_linux(
+            error_messages_callback=(
+                show_error_messages
+            )
+        )
+
+    remove_temp_files(
+        "flac",
+        error_messages_callback=(
+            show_error_messages
+        )
+    )
+
+    remove_temp_files(
+        "wav",
+        error_messages_callback=(
+            show_error_messages
+        )
+    )
 
     if completed_tasks == n_media_filepaths:
-        if sys.platform == "win32":
-            stop_ffmpeg_windows(error_messages_callback=show_error_messages)
-        else:
-            stop_ffmpeg_linux(error_messages_callback=show_error_messages)
+        end_time = datetime.datetime.now()
+        elapsed_time = (end_time - start_time)
+        print("total elapsed_time = {}".format(elapsed_time))
+        return 0
 
-        remove_temp_files("flac", error_messages_callback=show_error_messages)
-        remove_temp_files("wav", error_messages_callback=show_error_messages)
+    return 0
 
+
+# ================================================================
+# ENTRY POINT
+# ================================================================
 
 if __name__ == "__main__":
+
     multiprocessing.freeze_support()
-    sys.exit(main())
+
+    sys.exit(
+        main()
+    )
