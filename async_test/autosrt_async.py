@@ -800,100 +800,734 @@ class SpeechRecognizer:
         return asyncio.run(SpeechRecognizer.get_transcription(extracted_regions, recognizer))
 
 
-class SentenceTranslator:
-    def __init__(self, src, dst, patience=-1, timeout=30, error_messages_callback=None):
+class SentenceTranslator(object):
+
+    def __init__(
+        self,
+        src,
+        dst,
+        endpoint_config,
+        patience=-1,
+        timeout=30,
+        error_messages_callback=None
+    ):
+
         self.src = src
         self.dst = dst
+        self.endpoint_config = endpoint_config
         self.patience = patience
         self.timeout = timeout
         self.error_messages_callback = error_messages_callback
 
+
     async def __call__(self, sentence):
+
         try:
-            translated_sentence = []
+
             if not sentence:
                 return None
 
             translated_sentence = await self._translate(sentence)
 
-            fail_to_translate = translated_sentence[-1] == '\n'
-            while fail_to_translate and self.patience:
-                translated_sentence = await self._translate(translated_sentence)
-                if translated_sentence[-1] == '\n':
-                    if self.patience == -1:
+            if translated_sentence is None:
+                return None
+
+            translated_sentence = str(translated_sentence)
+
+            if not translated_sentence:
+                return None
+
+            fail_to_translate = translated_sentence.endswith('\n')
+
+            patience = self.patience
+
+            while fail_to_translate and patience:
+
+                translated_sentence = await self._translate(
+                    translated_sentence
+                )
+
+                if translated_sentence is None:
+                    return None
+
+                translated_sentence = str(translated_sentence)
+
+                if translated_sentence.endswith('\n'):
+
+                    if patience == -1:
                         continue
-                    self.patience -= 1
+
+                    patience -= 1
+
                 else:
+
                     fail_to_translate = False
+
             return translated_sentence
 
         except KeyboardInterrupt:
+
             if self.error_messages_callback:
-                self.error_messages_callback("Cancelling all tasks")
+                self.error_messages_callback(
+                    "Cancelling all tasks"
+                )
             else:
                 print("Cancelling all tasks")
-            return
+
+            return None
 
         except Exception as e:
+
             if self.error_messages_callback:
                 self.error_messages_callback(e)
             else:
                 print(e)
-            return
 
+            return None
 
-    async def GoogleTranslate(self, text, src, dst, timeout=30):
-        url = 'https://translate.googleapis.com/translate_a/'
-        params = 'single?client=gtx&sl='+src+'&tl='+dst+'&dt=t&q='+text;
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Referer': 'https://translate.google.com',}
-
-        try:
-            response = requests.get(url+params, headers=headers, timeout=self.timeout)
-            if response.status_code == 200:
-                response_json = response.json()[0]
-                length = len(response_json)
-                translation = ""
-                for i in range(length):
-                    translation = translation + response_json[i][0]
-                return translation
-            return
-
-        except requests.exceptions.ConnectionError:
-            with httpx.Client() as client:
-                response = client.get(url+params, headers=headers, timeout=timeout)
-                if response.status_code == 200:
-                    response_json = response.json()[0]
-                    length = len(response_json)
-                    translation = ""
-                    for i in range(length):
-                        translation = translation + response_json[i][0]
-                    return translation
-                return
-
-        except KeyboardInterrupt:
-            if self.error_messages_callback:
-                self.error_messages_callback("Cancelling all tasks")
-            else:
-                print("Cancelling all tasks")
-            return
-
-        except Exception as e:
-            if self.error_messages_callback:
-                self.error_messages_callback(e)
-            else:
-                print(e)
-            return
 
     async def _translate(self, sentence):
-        return await self.GoogleTranslate(sentence, src=self.src, dst=self.dst)
+
+        return await self.GoogleTranslate(
+            sentence,
+            src=self.src,
+            dst=self.dst,
+            timeout=self.timeout
+        )
+
 
     async def translate(self, sentence):
+
         return await self(sentence)
 
+
     def translate_async(self, sentence):
+
         loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        return loop.run_until_complete(self(sentence))
+
+        try:
+
+            asyncio.set_event_loop(loop)
+
+            return loop.run_until_complete(
+                self(sentence)
+            )
+
+        finally:
+
+            loop.close()
+
+
+    async def GoogleTranslate(
+        self,
+        text,
+        src,
+        dst,
+        timeout=30
+    ):
+
+        endpoint_type = self.endpoint_config.get("type")
+
+        try:
+
+            # ========================================================
+            # ENDPOINT 1
+            # ========================================================
+
+            if endpoint_type == 1:
+
+                url = self.endpoint_config["url"]
+
+                params = {
+                    "client": "gtx",
+                    "sl": src,
+                    "tl": dst,
+                    "dt": "t",
+                    "q": text
+                }
+
+                headers = self.endpoint_config["headers"]
+
+                response = requests.get(
+                    url,
+                    params=params,
+                    headers=headers,
+                    timeout=timeout
+                )
+
+                if response.status_code != 200:
+
+                    print(
+                        "Google Translate HTTP error: %s"
+                        % response.status_code
+                    )
+
+                    return None
+
+                try:
+
+                    data = response.json()
+
+                except ValueError:
+
+                    print(
+                        "Google Translate returned invalid JSON:"
+                    )
+
+                    print(response.text[:500])
+
+                    return None
+
+                if not isinstance(data, list):
+                    return None
+
+                if len(data) == 0:
+                    return None
+
+                response_json = data[0]
+
+                if not isinstance(response_json, list):
+                    return None
+
+                translation = ""
+
+                for item in response_json:
+
+                    if (
+                        isinstance(item, list)
+                        and len(item) > 0
+                        and isinstance(item[0], str)
+                    ):
+
+                        translation += item[0]
+
+                if translation:
+                    return translation
+
+                return None
+
+
+            # ========================================================
+            # ENDPOINT 2
+            # ========================================================
+
+            elif endpoint_type == 2:
+
+                url = self.endpoint_config["url"]
+
+                params = {
+                    "client": "dict-chrome-ex",
+                    "sl": src,
+                    "tl": dst,
+                    "q": text
+                }
+
+                headers = self.endpoint_config["headers"]
+
+                response = requests.get(
+                    url,
+                    params=params,
+                    headers=headers,
+                    timeout=timeout
+                )
+
+                if response.status_code != 200:
+
+                    print(
+                        "Google Translate HTTP error: %s"
+                        % response.status_code
+                    )
+
+                    return None
+
+                try:
+
+                    data = response.json()
+
+                except ValueError:
+
+                    print(
+                        "Google Translate returned invalid JSON:"
+                    )
+
+                    print(response.text[:500])
+
+                    return None
+
+                if not isinstance(data, list):
+                    return None
+
+                if len(data) == 0:
+                    return None
+
+                first = data[0]
+
+                # ----------------------------------------------------
+                # Response:
+                #
+                # ["Halo"]
+                # ----------------------------------------------------
+
+                if isinstance(first, str):
+
+                    if first:
+                        return first
+
+                    return None
+
+                # ----------------------------------------------------
+                # Nested response
+                # ----------------------------------------------------
+
+                if isinstance(first, list):
+
+                    translation = ""
+
+                    for item in first:
+
+                        if isinstance(item, str):
+
+                            translation += item
+
+                        elif (
+                            isinstance(item, list)
+                            and len(item) > 0
+                            and isinstance(item[0], str)
+                        ):
+
+                            translation += item[0]
+
+                    if translation:
+                        return translation
+
+                return None
+
+
+            else:
+
+                print(
+                    "Invalid Google Translate endpoint configuration."
+                )
+
+                return None
+
+
+        except requests.exceptions.ConnectionError as e:
+
+            # ========================================================
+            # CONNECTION ERROR
+            #
+            # Tidak pindah endpoint di sini.
+            #
+            # Endpoint sudah ditentukan melalui
+            # test_translation_endpoint().
+            # ========================================================
+
+            if self.error_messages_callback:
+
+                self.error_messages_callback(e)
+
+            else:
+
+                print(
+                    "Google Translate connection error: %s"
+                    % e
+                )
+
+            return None
+
+
+        except KeyboardInterrupt:
+
+            if self.error_messages_callback:
+
+                self.error_messages_callback(
+                    "Cancelling all tasks"
+                )
+
+            else:
+
+                print("Cancelling all tasks")
+
+            return None
+
+
+        except Exception as e:
+
+            if self.error_messages_callback:
+
+                self.error_messages_callback(e)
+
+            else:
+
+                print(e)
+
+            return None
+
+
+# ================================================================
+# ERROR CALLBACK
+# ================================================================
+
+def show_error_messages(messages):
+
+    print(messages)
+
+
+# ================================================================
+# TEST GOOGLE TRANSLATE ENDPOINT
+# ================================================================
+
+def test_translation_endpoint(
+    src,
+    dst,
+    error_messages_callback=None
+):
+
+    """
+    Menguji endpoint Google Translate.
+
+    Urutan:
+
+        1. translate.googleapis.com
+        2. clients5.google.com
+
+    Return:
+
+        endpoint configuration yang berhasil
+
+    atau:
+
+        None
+
+    """
+
+    test_sentence = "Hello"
+
+
+    # ============================================================
+    # ENDPOINT 1
+    # ============================================================
+
+    endpoint1 = {
+
+        "type": 1,
+
+        "url": (
+            "https://translate.googleapis.com/"
+            "translate_a/single"
+        ),
+
+        "params": {
+
+            "client": "gtx",
+            "sl": src,
+            "tl": dst,
+            "dt": "t",
+            "q": test_sentence
+
+        },
+
+        "headers": {
+
+            "User-Agent": (
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64)"
+            ),
+
+            "Referer": (
+                "https://translate.google.com"
+            )
+
+        }
+
+    }
+
+
+    try:
+
+        print("")
+        print("CHECKING GOOGLE TRANSLATE ENDPOINT")
+        print("===================================")
+        print("Testing endpoint 1...")
+        print(endpoint1["url"])
+
+
+        response = requests.get(
+
+            endpoint1["url"],
+
+            params=endpoint1["params"],
+
+            headers=endpoint1["headers"],
+
+            timeout=10
+
+        )
+
+
+        if response.status_code == 200:
+
+            try:
+
+                data = response.json()
+
+            except ValueError:
+
+                data = None
+
+
+            translation = None
+
+
+            if (
+                isinstance(data, list)
+                and len(data) > 0
+            ):
+
+                response_json = data[0]
+
+
+                if isinstance(response_json, list):
+
+                    result = ""
+
+
+                    for item in response_json:
+
+                        if (
+                            isinstance(item, list)
+                            and len(item) > 0
+                            and isinstance(item[0], str)
+                        ):
+
+                            result += item[0]
+
+
+                    if result:
+
+                        translation = result
+
+
+            if translation:
+
+                print(
+                    "Endpoint 1 : OK"
+                )
+
+                print(
+                    "Translation : %s"
+                    % translation
+                )
+
+                print(
+                    "Using endpoint 1"
+                )
+
+                print("")
+
+                return endpoint1
+
+
+        print(
+            "Endpoint 1 : FAILED "
+            "(HTTP %s)"
+            % response.status_code
+        )
+
+
+    except Exception as e:
+
+        print(
+            "Endpoint 1 : FAILED"
+        )
+
+        print(
+            "Error: %s"
+            % e
+        )
+
+
+    # ============================================================
+    # ENDPOINT 2
+    # ============================================================
+
+    endpoint2 = {
+
+        "type": 2,
+
+        "url": (
+            "https://clients5.google.com/"
+            "translate_a/t"
+        ),
+
+        "params": {
+
+            "client": "dict-chrome-ex",
+            "sl": src,
+            "tl": dst,
+            "q": test_sentence
+
+        },
+
+        "headers": {
+
+            "User-Agent": (
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) "
+                "Chrome/139.0.0.0 "
+                "Safari/537.36"
+            ),
+
+            "Accept": (
+                "application/json,"
+                "text/plain,*/*"
+            )
+
+        }
+
+    }
+
+
+    try:
+
+        print(
+            "Testing endpoint 2..."
+        )
+
+        print(
+            endpoint2["url"]
+        )
+
+
+        response = requests.get(
+
+            endpoint2["url"],
+
+            params=endpoint2["params"],
+
+            headers=endpoint2["headers"],
+
+            timeout=10
+
+        )
+
+
+        if response.status_code == 200:
+
+            try:
+
+                data = response.json()
+
+            except ValueError:
+
+                data = None
+
+
+            translation = None
+
+
+            if (
+                isinstance(data, list)
+                and len(data) > 0
+            ):
+
+                first = data[0]
+
+
+                # ------------------------------------------------
+                # Response:
+                #
+                # ["Hello"]
+                # ------------------------------------------------
+
+                if isinstance(first, str):
+
+                    translation = first
+
+
+                # ------------------------------------------------
+                # Nested response
+                # ------------------------------------------------
+
+                elif isinstance(first, list):
+
+                    result = ""
+
+
+                    for item in first:
+
+                        if isinstance(item, str):
+
+                            result += item
+
+                        elif (
+                            isinstance(item, list)
+                            and len(item) > 0
+                            and isinstance(item[0], str)
+                        ):
+
+                            result += item[0]
+
+
+                    if result:
+
+                        translation = result
+
+
+            if translation:
+
+                print(
+                    "Endpoint 2 : OK"
+                )
+
+                print(
+                    "Translation : %s"
+                    % translation
+                )
+
+                print(
+                    "Using endpoint 2"
+                )
+
+                print("")
+
+                return endpoint2
+
+
+        print(
+            "Endpoint 2 : FAILED "
+            "(HTTP %s)"
+            % response.status_code
+        )
+
+
+    except Exception as e:
+
+        print(
+            "Endpoint 2 : FAILED"
+        )
+
+        print(
+            "Error: %s"
+            % e
+        )
+
+
+    # ============================================================
+    # BOTH FAILED
+    # ============================================================
+
+    print("")
+    print(
+        "ERROR: Both Google Translate endpoints "
+        "are unavailable."
+    )
+    print("")
+
+    return None
 
 
 class SubtitleFormatter:
@@ -1140,6 +1774,18 @@ async def main():
         else:
             print("{} is not exist".format(arg))
 
+    endpoint_config = test_translation_endpoint(
+        args.dst_language,
+        args.src_language,
+        error_messages_callback=show_error_messages
+    )
+
+    if endpoint_config is None:
+        print("Translation endpoint is unavailable.")
+        pool.close()
+        pool.join()
+        return 1
+
     for media_filepath in media_filepaths:
         print("Processing {} :".format(media_filepath))
 
@@ -1228,7 +1874,7 @@ async def main():
             widgets = [prompt, Percentage(), ' ', Bar(), ' ', ETA()]
             pbar = ProgressBar(widgets=widgets, maxval=len(timed_subtitles)).start()
 
-            transcript_translator = SentenceTranslator(src=args.src_language, dst=args.dst_language, error_messages_callback=show_error_messages)
+            transcript_translator = SentenceTranslator(src=args.dst_language, dst=args.src_language, endpoint_config=endpoint_config, error_messages_callback=show_error_messages)
             transcript_translator_partial = partial(transcript_translator.translate_async)
 
             translated_subtitles = []
