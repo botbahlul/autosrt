@@ -231,10 +231,6 @@ class SentenceTranslator(object):
             return None
 
 
-# ================================================================
-# TEST TRANSLATION ENDPOINT
-# ================================================================
-
 def test_translation_endpoint(
     src,
     dst,
