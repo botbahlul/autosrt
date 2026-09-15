@@ -464,7 +464,7 @@ class WavConverter:
 
     async def __call__(self, media_filepath):
         if not os.path.isfile(media_filepath):
-            raise Exception("Invalid file: {}".format(media_filepath))
+            raise Exception("Invalid file: '{}'".format(media_filepath))
 
         ffmpeg = self.ffmpeg_check()
 
@@ -1219,7 +1219,7 @@ class SubtitleFormatter:
         if self.format_type == "raw":
             return self.raw_formatter(subtitles)
 
-        raise ValueError("Unsupported format type: {}".format(self.format_type))
+        raise ValueError("Unsupported format type: '{}'".format(self.format_type))
 
     @staticmethod
     def _seconds_to_milliseconds(seconds):
@@ -1300,7 +1300,7 @@ class SubtitleWriter:
 
 async def process_media_file(media_filepath, args, endpoint_config):
     global pbar
-    print("Processing {} :".format(media_filepath))
+    print("Processing '{}' :".format(media_filepath))
 
     # ============================================================
     # WAV
@@ -1487,11 +1487,15 @@ async def process_media_file(media_filepath, args, endpoint_config):
     print("Done.")
 
     if translated_subtitle_filepath:
-        print("Original subtitles file created at      : {}".format(subtitle_filepath))
-        print("Translated subtitles file created at    : {}".format(translated_subtitle_filepath))
+        print("Original subtitles file created at      : '{}'".format(subtitle_filepath))
+        print("Translated subtitles file created at    : '{}'".format(translated_subtitle_filepath))
 
     else:
-        print("Subtitles file created at               : {}".format(subtitle_filepath))
+        print("Subtitles file created at               : '{}'".format(subtitle_filepath))
+
+    if (args.dst_language and not is_same_language(args.src_language, args.dst_language) and args.remove_src):
+        print("Removing '{}' as instructed with '-R' or '--remove-src' argument ".format(subtitle_filepath))
+        os.remove(subtitle_filepath)
 
 
 # ================================================================
@@ -1523,6 +1527,7 @@ async def main():
     parser.add_argument("-F", "--format", help=("Desired subtitle format"), default="srt")
     parser.add_argument("-lf", "--list-formats", help=("List all supported subtitle formats"), action="store_true")
     parser.add_argument("-C", "--concurrency", help=("Number of concurrent API/FFmpeg requests"), type=int, default=DEFAULT_CONCURRENCY)
+    parser.add_argument('-R', '--remove-src', action='store_true', help="Remove source language subtitle files after translation")
     parser.add_argument("-v", "--version", action="version",version=VERSION)
     args = parser.parse_args()
 
@@ -1650,7 +1655,7 @@ async def main():
                 return 1
 
             except Exception as e:
-                print("Error processing {}:".format(media_filepath))
+                print("Error processing '{}':".format(media_filepath))
                 print(e)
                 return 1
 
