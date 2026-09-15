@@ -20,7 +20,7 @@ from progressbar import ProgressBar, Percentage, Bar, ETA
 import pysrt
 import six
 # ADDITIONAL IMPORT
-from glob import glob, escape
+import glob
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -28,7 +28,7 @@ import shlex
 import shutil
 
 
-VERSION = "1.4.10"
+VERSION = "1.4.11"
 
 
 class Language:
@@ -1491,9 +1491,9 @@ def test_translation_endpoint(src, dst, error_messages_callback=None):
 
     test_sentence = "Hello"
 
-    #print("")
-    #print("CHECKING GOOGLE TRANSLATE ENDPOINT")
-    #print("=================================-")
+    print("")
+    print("CHECKING GOOGLE TRANSLATE ENDPOINT")
+    print("==================================")
 
     # ============================================================
     # ENDPOINT 1
@@ -1526,8 +1526,8 @@ def test_translation_endpoint(src, dst, error_messages_callback=None):
 
     try:
 
-        #print("Testing SentenceTranslator endpoint 1...")
-        #print("URL: %s" % endpoint1["url"])
+        print("Testing SentenceTranslator endpoint 1...")
+        print("URL                                     : %s" % endpoint1["url"])
 
         response = requests.get(
             endpoint1["url"],
@@ -1566,19 +1566,24 @@ def test_translation_endpoint(src, dst, error_messages_callback=None):
                         translation = result
 
             if translation:
-                #print("SentenceTranslator endpoint 1 : OK")
-                #print("Translation test result         : %s" % translation)
-                #print("Using endpoint 1")
-                #print("")
+
+                print("SentenceTranslator endpoint 1           : OK")
+                #print("Translation test result        : %s" % translation)
+                print("Using endpoint 1")
+                print("")
+
                 return endpoint1
 
-        #print("SentenceTranslator endpoint 1 : FAILED " "(HTTP %s)" % response.status_code)
+        print(
+            "SentenceTranslator endpoint 1           : FAILED "
+            "(HTTP %s)" % response.status_code
+        )
 
     except Exception as e:
             if self.error_messages_callback:
                 self.error_messages_callback(e)
             else:
-                print("SentenceTranslator endpoint 1 : FAILED")
+                print("SentenceTranslator endpoint 1           : FAILED")
                 print("Error: %s" % e)
 
     # ============================================================
@@ -1610,9 +1615,9 @@ def test_translation_endpoint(src, dst, error_messages_callback=None):
     }
 
     try:
-
-        #print("Testing SentenceTranslator endpoint 2...")
-        #print("URL: %s" % endpoint2["url"])
+        print("")
+        print("Testing SentenceTranslator endpoint 2...")
+        print("URL                                     : %s" % endpoint2["url"])
 
         response = requests.get(
             endpoint2["url"],
@@ -1658,24 +1663,29 @@ def test_translation_endpoint(src, dst, error_messages_callback=None):
                         translation = result
 
             if translation:
-                #print("SentenceTranslator endpoint 2 : OK")
-                #print("Translation test result         : %s" % translation)
-                #print("Using endpoint 2")
-                #print("")
+
+                print("SentenceTranslator endpoint 2           : OK")
+                #print("Translation test result        : %s" % translation)
+                print("Using endpoint 2")
+                print("")
+
                 return endpoint2
 
-        #print("SentenceTranslator endpoint 2 : FAILED " "(HTTP %s)" % response.status_code)
+        print(
+            "SentenceTranslator endpoint 2           : FAILED "
+            "(HTTP %s)" % response.status_code
+        )
 
     except Exception as e:
             if self.error_messages_callback:
                 self.error_messages_callback(e)
             else:
-                print("SentenceTranslator endpoint 2 : FAILED")
+                print("SentenceTranslator endpoint 2           : FAILED")
                 print("Error: %s" % e)
 
-    #print("")
-    #print("ERROR: Both Google Translate endpoints are unavailable.")
-    #print("")
+    print("")
+    print("ERROR: Both Google Translate endpoints are unavailable.")
+    print("")
 
     return None
 
@@ -3259,6 +3269,67 @@ def is_same_language(src, dst, error_messages_callback=None):
         return
 
 
+def escape_glob_brackets(pattern):
+    """
+    Just escape the characters '[' and ']' so that they are treated as literals by glob, 
+    WITHOUT turning off the '*' and '?' wildcards. Applies the same on all OS because 
+    cross-platform glob module for these characters. 
+    """
+    placeholder = "\0"  # characters that are almost impossible to find in the original filename
+    pattern = pattern.replace("[", placeholder)
+    pattern = pattern.replace("]", "[]]")
+    pattern = pattern.replace(placeholder, "[[]")
+    return pattern
+
+
+def check_file(source_paths, error_messages_callback=None):
+    results = []
+
+    for raw_pattern in source_paths:
+        pattern = raw_pattern.replace("\\", "/")
+
+        # 1. First, check as a literal file (safest for filenames
+        #    with unusual characters like [ ] #, etc., requiring no escaping at all)
+        if os.path.isfile(pattern):
+            matched = [pattern]
+        else:
+            # 2. If it's not a literal file, escape only [ ] (to keep them literal)
+            #    while PRESERVING * and ? as wildcards, then process via glob
+            escaped_pattern = escape_glob_brackets(pattern)
+            matched = glob.glob(escaped_pattern)
+
+            if not matched:
+                matched = [pattern]  # no match found -> report "not exist"
+
+        for filepath in matched:
+            filepath = os.path.normpath(filepath)
+
+            exists = os.path.isfile(filepath)
+
+            label = filepath if len(filepath) <= 40 else "..." + filepath[-(40 - 3):]
+            print(f"{label:<40}: {'exists' if exists else 'not exist'}", end="")
+
+            media_type = None
+            if exists:
+                media_type = check_file_type(filepath, error_messages_callback)
+                print(f" ({media_type or 'unknown'})")
+            else:
+                print()
+
+            results.append({
+                'path': filepath,
+                'exists': exists,
+                'type': media_type
+            })
+
+    media_filepaths = [
+        r['path'] for r in results
+        if r['exists'] and r['type'] in ('video', 'audio')
+    ]
+
+    return media_filepaths
+
+
 def check_file_type(media_filepath, error_messages_callback=None):
     def which(program):
         def is_exe(file_path):
@@ -3371,6 +3442,7 @@ def main():
     parser.add_argument('-es', '--embed-src', help="Boolean value (True or False) for embedding original language subtitles file into media file", type=bool, default=False)
     parser.add_argument('-ed', '--embed-dst', help="Boolean value (True or False) for embedding translated subtitles file into media file", type=bool, default=False)
     parser.add_argument('-fr', '--force-recognize', help="Boolean value (True or False) for re-recognize media file event if it's already has subtitles stream", type=bool, default=False)
+    parser.add_argument('-R', '--remove-src', action='store_true', help="Remove source language subtitle files after translation")
     parser.add_argument('-v', '--version', action='version', version=VERSION)
 
     args = parser.parse_args()
@@ -3424,65 +3496,18 @@ def main():
     media_format = None
 
     #for arg in args.source_path:
-    #    print("escape(arg) = %s" %(escape(arg)))
+    #    print("glob.escape(arg) = %s" %(glob.escape(arg)))
 
-    args_source_path = args.source_path
+    print("")
+    print("CHECKING MEDIA FILES")
+    print("====================")
+    media_filepaths = check_file(args.source_path)
+    print(f"media_filepaths = {media_filepaths}")
 
-    if (not "*" in str(args_source_path)) and (not "?" in str(args_source_path)):
-        for filepath in args_source_path:
-            fpath = Path(filepath)
-            #print("fpath = %s" %fpath)
-            if not os.path.isfile(fpath):
-                not_exist_filepaths.append(filepath)
-                #print(str(fpath) + " is not exist")
-
-    if sys.platform == "win32":
-        for i in range(len(args.source_path)):
-            if ("[" or "]") in args.source_path[i]:
-                placeholder = "#TEMP#"
-                args_source_path[i] = args.source_path[i].replace("[", placeholder)
-                args_source_path[i] = args_source_path[i].replace("]", "[]]")
-                args_source_path[i] = args_source_path[i].replace(placeholder, "[[]")
-                #print("args_source_path = %s" %(args_source_path))
-
-    for arg in args_source_path:
-        if not sys.platform == "win32" :
-            arg = escape(arg)
-
-        #print("glob(arg) = %s" %(glob(arg)))
-
-        arg_filepaths += glob(arg)
-        #print("arg_filepaths = %s" %(arg_filepaths))
-
-
-    if arg_filepaths:
-        for argpath in arg_filepaths:
-            if os.path.isfile(argpath):
-                if check_file_type(argpath, error_messages_callback=show_error_messages) == 'video':
-                    media_filepaths.append(argpath)
-                elif check_file_type(argpath, error_messages_callback=show_error_messages) == 'audio':
-                    media_filepaths.append(argpath)
-                else:
-                    invalid_media_filepaths.append(argpath)
-            else:
-                not_exist_filepaths.append(argpath)
-
-        if invalid_media_filepaths:
-            for invalid_media_filepath in invalid_media_filepaths:
-                msg = f"'{invalid_media_filepath}' is not valid media files"
-                print(msg)
-
-    #print("not_exist_filepaths = %s" %(not_exist_filepaths))
-
-    if not_exist_filepaths:
-        if (not "*" in str(args_source_path)) and (not "?" in str(args_source_path)):
-            for not_exist_filepath in not_exist_filepaths:
-                msg = f"'{not_exist_filepath}' is not exist"
-                print(msg)
-                sys.exit(0)
-
-    if not arg_filepaths and not not_exist_filepaths:
-        print("No any files matching filenames you typed")
+    if not media_filepaths:
+        print("")
+        print("Nothing to process, exiting")
+        print("")
         sys.exit(0)
 
     pool = multiprocessing.Pool(args.concurrency)
@@ -3502,22 +3527,23 @@ def main():
     removed_media_filepaths = []
     processed_list = []
 
-    # ============================================================
-    # TEST ENDPOINT ONCE
-    # ============================================================
-    endpoint_config = None
-    if do_translate:
-        endpoint_config = test_translation_endpoint(args.src_language, args.dst_language, error_messages_callback=show_error_messages)
-        if endpoint_config is None:
-            print("ERROR: No working Google Translate endpoint.")
-            return 1
-        #print("Selected Google Translate endpoint : %d" % endpoint_config["type"])
-        #print("Selected URL                      : %s" % endpoint_config["url"])
-        #print("")
+    if media_filepaths and args.src_language and args.dst_language:
+        # ============================================================
+        # TEST ENDPOINT ONCE
+        # ============================================================
+        endpoint_config = None
+        if do_translate:
+            endpoint_config = test_translation_endpoint(args.src_language, args.dst_language, error_messages_callback=show_error_messages)
+            if endpoint_config is None:
+                print("ERROR: No working Google Translate endpoint.")
+                return 1
+            #print("Selected Google Translate endpoint : %d" % endpoint_config["type"])
+            #print("Selected URL                      : %s" % endpoint_config["url"])
+            #print("")
 
     # CHECK SUBTITLE STREAM PART IF args.force_recognize == False
-    if args.force_recognize == False:
-
+    if media_filepaths and args.force_recognize == False:
+        if not do_translate: print("")
         print("CHECKING EXISTING SUBTITLES STREAMS")
         print("===================================")
 
@@ -3815,7 +3841,7 @@ def main():
                             #print(f"\nargs.force_recognize == False, do_translate == True, media_type == 'video', subtitle stream = exist : completed_tasks = {completed_tasks}\n")
 
                 print("")
-            print("")
+            #print("")
 
             # nothing to process with speech reconition
             if not media_filepaths:
@@ -4151,6 +4177,10 @@ def main():
                                 #print(f"\ndo_translate == True, media_type == 'video', args.embed_src == False and args.embed_dst == True : completed_tasks = {completed_tasks}\n")
                             else:
                                 print("Unknown error!")
+
+                if do_translate and args.remove_src:
+                    print(f"Removing '{src_subtitle_filepath}' as instructed with '-R' or '--remove-src' argument")
+                    os.remove(src_subtitle_filepath)
 
                 print('')
 
