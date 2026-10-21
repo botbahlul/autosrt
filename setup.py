@@ -29,6 +29,7 @@ install_requires=[
     "pysrt>=1.0.1",
     "six>=1.11.0",
     "progressbar2>=3.34.3",
+    "audioop-lts>=0.2.1; python_version>='3.13'",
 ]
 
 setup(
